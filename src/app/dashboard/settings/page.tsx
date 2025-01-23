@@ -168,6 +168,15 @@ export default function SettingsPage() {
     setProfile({ ...profile, interests });
   };
 
+  const handleBranchChange = (branch: string) => {
+    if (!profile) return;
+    
+    setProfile({
+      ...profile,
+      branch
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen w-full relative font-cabinet-grotesk">
@@ -257,7 +266,7 @@ export default function SettingsPage() {
               </label>
               <select
                 value={profile?.branch || ''}
-                onChange={(e) => setProfile({ ...profile, branch: e.target.value })}
+                onChange={(e) => handleBranchChange(e.target.value)}
                 className="w-full px-4 py-2.5 md:py-3 bg-[#1a1a1a] text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm md:text-base"
                 style={{ backgroundColor: '#1a1a1a' }}
               >

@@ -2,13 +2,16 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import Ably from 'ably';
+import { useChannel } from '@ably-labs/react-hooks';
+import * as Ably from 'ably';
 import { useParams } from 'next/navigation';
 import { EmojiPicker } from '@/components/emoji-picker';
-import { Send, Smile, ArrowLeft } from 'lucide-react';
+import { VoiceRecorder } from '@/components/voice-recorder';
+import { Send, Smile, ArrowLeft, MessageCircle, Mic, MoreVertical } from 'lucide-react';
 import Link from 'next/link';
+import type { Database } from '@/lib/database.types';
 
-type Message = {
+interface Message {
   id: string;
   content: string;
   sender: {
@@ -19,58 +22,75 @@ type Message = {
   reactions: {
     [key: string]: { id: string; name: string }[];
   };
-};
+}
+
+interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+}
 
 export default function DirectMessagePage() {
   const params = useParams();
   const otherUserId = params.userId as string;
-  const supabase = createClientComponentClient();
+  const supabase = createClientComponentClient<Database>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [otherUser, setOtherUser] = useState<any>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [ably, setAbly] = useState<Ably.Realtime | null>(null);
-  const [channel, setChannel] = useState<Ably.Types.RealtimeChannel | null>(null);
+  const [channel, setChannel] = useState<Ably.RealtimeChannel | null>(null);
 
   useEffect(() => {
     const setupAbly = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
           console.error('No user session found');
           return;
         }
 
-        setCurrentUser(session.user);
+        // Create user profile object
+        const userProfile: UserProfile = {
+          id: user.id,
+          name: user.user_metadata?.name || user.email?.split('@')[0] || 'Anonymous',
+          email: user.email || ''
+        };
+        setCurrentUser(userProfile);
 
         // Initialize Ably
         const ablyClient = new Ably.Realtime({
-          key: process.env.NEXT_PUBLIC_ABLY_API_KEY,
-          clientId: session.user.id
+          key: process.env.NEXT_PUBLIC_ABLY_API_KEY || '',
+          clientId: user.id
         });
 
         setAbly(ablyClient);
 
         // Create a unique channel name for the two users
-        const channelName = [session.user.id, otherUserId].sort().join('-');
+        const channelName = [user.id, otherUserId].sort().join('-');
         const channelInstance = ablyClient.channels.get(`dm-${channelName}`);
         setChannel(channelInstance);
 
         // Subscribe to messages
-        channelInstance.subscribe('new-message', (message) => {
-          setMessages(prev => [...prev, message.data]);
+        channelInstance.subscribe('new-message', (message: Ably.Message) => {
+          if (message.data) {
+            setMessages(prev => [...prev, message.data as Message]);
+          }
         });
 
         // Subscribe to reactions
-        channelInstance.subscribe('reaction', ({ data }) => {
-          setMessages(prev => prev.map(msg => 
-            msg.id === data.messageId 
-              ? { ...msg, reactions: data.reactions }
-              : msg
-          ));
+        channelInstance.subscribe('reaction', (message: Ably.Message) => {
+          if (message.data) {
+            const { messageId, reactions } = message.data as { messageId: string; reactions: Message['reactions'] };
+            setMessages(prev => prev.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, reactions }
+                : msg
+            ));
+          }
         });
 
         return () => {
@@ -96,15 +116,41 @@ export default function DirectMessagePage() {
   };
 
   const fetchOtherUser = async () => {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', otherUserId)
-      .single();
-    setOtherUser(profile);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('name, email')
+        .eq('id', otherUserId)
+        .single();
+
+      if (error) throw error;
+      
+      if (data) {
+        const profile = data as Database['public']['Tables']['profiles']['Row'];
+        setOtherUser({
+          id: otherUserId,
+          name: profile.name,
+          email: profile.email
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching other user:', error);
+    }
   };
 
   const fetchMessages = async () => {
+    type MessageWithProfile = {
+      id: string;
+      content: string;
+      created_at: string;
+      reactions: Record<string, any>;
+      sender_id: string;
+      profiles: Array<{
+        name: string;
+        email: string;
+      }>;
+    };
+
     const { data } = await supabase
       .from('direct_messages')
       .select(`
@@ -123,13 +169,13 @@ export default function DirectMessagePage() {
       .order('created_at', { ascending: true });
 
     if (data) {
-      const formattedMessages = data.map(msg => ({
+      const formattedMessages = (data as MessageWithProfile[]).map(msg => ({
         id: msg.id,
         content: msg.content,
         timestamp: new Date(msg.created_at).getTime(),
         sender: {
           id: msg.sender_id,
-          name: msg.profiles?.name || msg.profiles?.email?.split('@')[0] || 'Anonymous'
+          name: msg.profiles[0]?.name || msg.profiles[0]?.email?.split('@')[0] || 'Anonymous'
         },
         reactions: msg.reactions || {}
       }));

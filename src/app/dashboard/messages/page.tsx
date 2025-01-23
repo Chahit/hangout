@@ -424,11 +424,11 @@ export default function MessagesPage() {
                                 : 'No messages yet'}
                             </span>
                           </div>
-                          {user.unread_count > 0 && (
-                            <div className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded-full">
-                              {user.unread_count} unread
-                            </div>
-                          )}
+                          {user.unread_count ? (
+                            <span className="bg-purple-500 text-white text-xs px-2 py-0.5 rounded-full">
+                              {user.unread_count ?? 0}
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                     </div>

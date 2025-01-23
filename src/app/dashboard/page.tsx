@@ -183,8 +183,9 @@ export default function DashboardPage() {
         .select('*', { count: 'exact' })
         .eq('user_id', user.id);
 
-      const { count: attendedEvents } = await supabase
-        .from('event_participants')
+      // Get attended events count
+      const { count: attendedEventsCount } = await supabase
+        .from('event_attendees')
         .select('*', { count: 'exact' })
         .eq('user_id', user.id)
         .eq('status', 'attended');
@@ -196,6 +197,9 @@ export default function DashboardPage() {
         .eq('from_user_id', user.id)
         .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
 
+      const eventParticipation = attendedEventsCount ?? 0;
+      const groupEngagement = (recentActivity || 0) / (totalEvents || 1);
+
       setStats({
         communities: groupsCount || 0,
         unreadMessages: messagesCount || 0,
@@ -203,8 +207,8 @@ export default function DashboardPage() {
         notifications: notificationsCount || 0,
         totalConnections: connectionsCount || 0,
         activeChats: activeChatsCount || 0,
-        eventParticipation: totalEvents ? Math.round((attendedEvents / totalEvents) * 100) : 0,
-        groupEngagement: recentActivity || 0
+        eventParticipation,
+        groupEngagement
       });
 
       // Fetch upcoming events
