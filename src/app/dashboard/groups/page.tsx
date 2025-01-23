@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Plus, Users, Dumbbell, Code, Book, Music, Gamepad, Camera, Coffee, MessageSquare, X, Sparkles, Trash2, MessageCircle, Search, Clock } from 'lucide-react';
+import { Plus, Users, Dumbbell, Code, Book, Music, Gamepad, Camera, Coffee, MessageSquare, X, Sparkles, Trash2, MessageCircle, Search, Clock, Settings } from 'lucide-react';
 import { Database } from '../../../lib/database.types';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Modal from '@/components/shared/Modal';
 import { format } from 'date-fns';
+import { useRouter } from 'next/navigation';
 
 // Animation variants
 const cardVariants = {
@@ -72,17 +73,23 @@ const getGroupIcon = (groupName: string) => {
   return GROUP_ICONS.default;
 };
 
-interface GroupStats {
-  totalMembers: number;
-  activeToday: number;
-  totalMessages: number;
-  lastActivity: string;
-}
-
-type Group = Database['public']['Tables']['groups']['Row'] & {
+interface Group {
+  id: string;
+  name: string;
+  description: string;
+  code: string;
+  created_by: string;
+  created_at: string;
   role?: string;
   category?: string;
-};
+}
+
+interface GroupStats {
+  totalMembers: number;
+  activeMembers: number;
+  messageCount: number;
+  lastActivity?: string;
+}
 
 export default function GroupsPage() {
   const supabase = createClientComponentClient<Database>();
@@ -93,14 +100,20 @@ export default function GroupsPage() {
   const [groupCode, setGroupCode] = useState('');
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [groups, setGroups] = useState<Group[]>([]);
-  const [groupStats, setGroupStats] = useState<{[key: string]: GroupStats}>({});
+  const [stats, setStats] = useState<GroupStats>({
+    totalMembers: 0,
+    activeMembers: 0,
+    messageCount: 0,
+    lastActivity: undefined
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [sortBy, setSortBy] = useState<'name' | 'members' | 'activity'>('activity');
   const [user, setCurrentUser] = useState<any>(null);
+  const router = useRouter();
 
   useEffect(() => {
     fetchGroups();
@@ -153,7 +166,12 @@ export default function GroupsPage() {
   };
 
   const fetchGroupStats = async () => {
-    const stats: {[key: string]: GroupStats} = {};
+    const stats: GroupStats = {
+      totalMembers: 0,
+      activeMembers: 0,
+      messageCount: 0,
+      lastActivity: undefined
+    };
     
     for (const group of groups) {
       try {
@@ -166,39 +184,27 @@ export default function GroupsPage() {
         // Fetch active members today
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const { count: activeToday } = await supabase
+        const { count: activeMembers } = await supabase
           .from('group_messages')
           .select('DISTINCT user_id', { count: 'exact' })
           .eq('group_id', group.id)
           .gte('created_at', today.toISOString());
 
         // Fetch total messages
-        const { count: totalMessages } = await supabase
+        const { count: messageCount } = await supabase
           .from('group_messages')
           .select('*', { count: 'exact' })
           .eq('group_id', group.id);
 
-        // Fetch last activity
-        const { data: lastMessage } = await supabase
-          .from('group_messages')
-          .select('created_at')
-          .eq('group_id', group.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        stats[group.id] = {
-          totalMembers: totalMembers || 0,
-          activeToday: activeToday || 0,
-          totalMessages: totalMessages || 0,
-          lastActivity: lastMessage?.created_at || group.created_at
-        };
+        stats.totalMembers = totalMembers || 0;
+        stats.activeMembers = activeMembers || 0;
+        stats.messageCount = messageCount || 0;
       } catch (error) {
         console.error(`Error fetching stats for group ${group.id}:`, error);
       }
     }
 
-    setGroupStats(stats);
+    setStats(stats);
   };
 
   // Filter and sort groups
@@ -214,10 +220,10 @@ export default function GroupsPage() {
         case 'name':
           return a.name.localeCompare(b.name);
         case 'members':
-          return (groupStats[b.id]?.totalMembers || 0) - (groupStats[a.id]?.totalMembers || 0);
+          return (stats.totalMembers) - (stats.totalMembers);
         case 'activity':
-          return new Date(groupStats[b.id]?.lastActivity || 0).getTime() - 
-                 new Date(groupStats[a.id]?.lastActivity || 0).getTime();
+          return new Date(stats.lastActivity || 0).getTime() - 
+                 new Date(stats.lastActivity || 0).getTime();
         default:
           return 0;
       }
@@ -460,14 +466,14 @@ export default function GroupsPage() {
                     <p className="text-sm text-gray-400">Members</p>
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-purple-400" />
-                      <p className="font-medium">{groupStats[group.id]?.totalMembers || 0}</p>
+                      <p className="font-medium">{stats.totalMembers}</p>
                     </div>
                   </div>
                   <div className="bg-white/5 p-3 rounded-lg">
                     <p className="text-sm text-gray-400">Active Today</p>
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-green-400" />
-                      <p className="font-medium">{groupStats[group.id]?.activeToday || 0}</p>
+                      <p className="font-medium">{stats.activeMembers}</p>
                     </div>
                   </div>
                 </div>
@@ -475,13 +481,13 @@ export default function GroupsPage() {
                 <div className="mt-4 flex items-center justify-between text-sm text-gray-400">
                   <div className="flex items-center gap-2">
                     <MessageSquare className="w-4 h-4" />
-                    <span>{groupStats[group.id]?.totalMessages || 0} messages</span>
+                    <span>{stats.messageCount} messages</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4" />
                     <span>
-                      {groupStats[group.id]?.lastActivity
-                        ? format(new Date(groupStats[group.id].lastActivity), 'MMM d, h:mm a')
+                      {stats.lastActivity
+                        ? format(new Date(stats.lastActivity), 'MMM d, h:mm a')
                         : 'No activity'}
                     </span>
                   </div>

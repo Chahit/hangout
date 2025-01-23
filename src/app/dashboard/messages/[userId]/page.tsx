@@ -7,21 +7,18 @@ import * as Ably from 'ably';
 import { useParams } from 'next/navigation';
 import { EmojiPicker } from '@/components/emoji-picker';
 import { VoiceRecorder } from '@/components/voice-recorder';
-import { Send, Smile, ArrowLeft, MessageCircle, Mic, MoreVertical } from 'lucide-react';
+import { Send, Smile, ArrowLeft, MessageCircle, Mic, MoreVertical, Image } from 'lucide-react';
 import Link from 'next/link';
 import type { Database } from '@/lib/database.types';
+import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 
 interface Message {
   id: string;
   content: string;
-  sender: {
-    id: string;
-    name: string;
-  };
-  timestamp: number;
-  reactions: {
-    [key: string]: { id: string; name: string }[];
-  };
+  created_at: string;
+  sender_id: string;
+  receiver_id: string;
 }
 
 interface UserProfile {
@@ -36,7 +33,8 @@ export default function DirectMessagePage() {
   const supabase = createClientComponentClient<Database>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [otherUser, setOtherUser] = useState<{ name: string; email: string } | null>(null);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
@@ -128,7 +126,6 @@ export default function DirectMessagePage() {
       if (data) {
         const profile = data as Database['public']['Tables']['profiles']['Row'];
         setOtherUser({
-          id: otherUserId,
           name: profile.name,
           email: profile.email
         });

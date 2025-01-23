@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Sparkles, Mail } from 'lucide-react';
 
@@ -38,11 +37,10 @@ const FloatingShapes = () => (
   </div>
 );
 
-export default function AuthPage() {
+const AuthPage = () => {
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const supabase = createClientComponentClient();
 
   const validateEmail = (email: string) => {
@@ -51,12 +49,12 @@ export default function AuthPage() {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setMessage('');
+    setIsLoading(true);
+    setError(null);
 
     if (!validateEmail(email)) {
-      setMessage('Please use your SNU email address (@snu.edu.in)');
-      setLoading(false);
+      setError('Please use your SNU email address (@snu.edu.in)');
+      setIsLoading(false);
       return;
     }
 
@@ -70,12 +68,12 @@ export default function AuthPage() {
 
       if (error) throw error;
       
-      setMessage('Check your email for the magic link!');
+      setError('Check your email for the magic link!');
     } catch (error) {
-      setMessage('Error sending magic link. Please try again.');
+      setError('Error sending magic link. Please try again.');
       console.error('Error:', error);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -129,23 +127,23 @@ export default function AuthPage() {
                 placeholder="your.name@snu.edu.in"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                disabled={loading}
+                disabled={isLoading}
                 pattern=".+@snu\.edu\.in"
                 title="Please enter your SNU email address"
               />
             </div>
 
-            {message && (
+            {error && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className={`text-sm text-center p-3 rounded-xl ${
-                  message.includes('Error') || message.includes('Please use')
+                  error.includes('Error') || error.includes('Please use')
                     ? 'bg-red-500/10 text-red-500'
                     : 'bg-green-500/10 text-green-500'
                 }`}
               >
-                {message}
+                {error}
               </motion.div>
             )}
 
@@ -153,15 +151,17 @@ export default function AuthPage() {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               type="submit"
-              disabled={loading}
+              disabled={isLoading}
               className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition-all text-sm md:text-base flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <Sparkles className="w-4 h-4" />
-              {loading ? 'Sending...' : 'Send Magic Link'}
+              {isLoading ? 'Sending...' : 'Send Magic Link'}
             </motion.button>
           </form>
         </motion.div>
       </motion.div>
     </div>
   );
-} 
+}
+
+export default AuthPage; 
