@@ -1,4 +1,4 @@
-import Ably from "ably/promises";
+import Ably from "ably";
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
@@ -13,12 +13,17 @@ export async function GET(request: Request) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    const client = new Ably.Rest(process.env.ABLY_API_KEY!);
-    const tokenRequestData = await client.auth.createTokenRequest({
-      clientId: session.user.id,
-      capability: {
-        [`group-*`]: ['publish', 'subscribe', 'presence']
-      }
+    const client = new Ably.Realtime(process.env.ABLY_API_KEY!);
+    const tokenRequestData = await new Promise((resolve, reject) => {
+      client.auth.createTokenRequest({
+        clientId: session.user.id,
+        capability: {
+          [`group-*`]: ['publish', 'subscribe', 'presence']
+        }
+      }, (err, tokenRequest) => {
+        if (err) reject(err);
+        resolve(tokenRequest);
+      });
     });
 
     return NextResponse.json(tokenRequestData);
