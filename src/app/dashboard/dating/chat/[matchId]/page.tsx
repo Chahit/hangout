@@ -2,59 +2,55 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Send, Loader2, ArrowLeft } from 'lucide-react';
+import { useParams } from 'next/navigation';
+import { Send, Smile, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import type { Database } from '@/lib/database.types';
 
 interface Message {
   id: string;
   content: string;
-  sender_id: string;
   created_at: string;
-  sender_email?: string;
+  sender_id: string;
+  match_id: string;
 }
 
-interface MatchInfo {
+interface UserProfile {
   id: string;
-  partner_id: string;
-  partner_email: string;
-  status: string;
+  name: string;
+  email: string;
 }
 
-export default function ChatPage({ params }: { params: { matchId: string } }) {
-  const supabase = createClientComponentClient();
-  const router = useRouter();
+export default function ChatPage() {
+  const params = useParams();
+  const matchId = params.matchId as string;
+  const supabase = createClientComponentClient<Database>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [matchInfo, setMatchInfo] = useState<MatchInfo | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
     fetchMatchInfo();
-    const messagesChannel = supabase.channel(`match:${params.matchId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'dating_messages',
-        filter: `match_id=eq.${params.matchId}`
-      }, (payload) => {
-        handleNewMessage(payload.new as Message);
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(messagesChannel);
-    };
-  }, [params.matchId]);
+    fetchMessages();
+    handleNewMessage();
+  }, [matchId]);
 
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUser(user);
+      if (user) {
+        setCurrentUser({
+          id: user.id,
+          name: user.user_metadata.name,
+          email: user.user_metadata.email
+        });
+      }
     };
     getUser();
   }, []);
@@ -71,7 +67,7 @@ export default function ChatPage({ params }: { params: { matchId: string } }) {
           sender:sender_id(email),
           receiver:receiver_id(email)
         `)
-        .eq('id', params.matchId)
+        .eq('id', matchId)
         .single();
 
       if (matchError) throw matchError;
@@ -107,7 +103,7 @@ export default function ChatPage({ params }: { params: { matchId: string } }) {
           *,
           sender:sender_id(email)
         `)
-        .eq('match_id', params.matchId)
+        .eq('match_id', matchId)
         .order('created_at', { ascending: true });
 
       if (messagesError) throw messagesError;
@@ -124,9 +120,21 @@ export default function ChatPage({ params }: { params: { matchId: string } }) {
     }
   }
 
-  function handleNewMessage(message: Message) {
-    setMessages(prev => [...prev, message]);
-    scrollToBottom();
+  function handleNewMessage() {
+    const messagesChannel = supabase.channel(`match:${matchId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'dating_messages',
+        filter: `match_id=eq.${matchId}`
+      }, (payload) => {
+        handleNewMessage(payload.new as Message);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(messagesChannel);
+    };
   }
 
   async function sendMessage(e: React.FormEvent) {
@@ -141,7 +149,7 @@ export default function ChatPage({ params }: { params: { matchId: string } }) {
       const { error } = await supabase
         .from('dating_messages')
         .insert({
-          match_id: params.matchId,
+          match_id: matchId,
           sender_id: user.id,
           content: newMessage.trim()
         });

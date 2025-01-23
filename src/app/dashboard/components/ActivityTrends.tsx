@@ -18,6 +18,7 @@ interface ActivityData {
 
 interface DataPoint {
   value: number;
+  category: string;
 }
 
 export default function ActivityTrends() {
@@ -44,9 +45,17 @@ export default function ActivityTrends() {
     }
   };
 
-  const generateDataPoints = (count: number): DataPoint[] => {
-    return Array.from({ length: count }, () => ({
-      value: Math.floor(Math.random() * 100)
+  const generateDataPoints = (): DataPoint[] => {
+    if (data.length === 0) {
+      return Array.from({ length: 12 }, () => ({
+        value: Math.floor(Math.random() * 100),
+        category: 'default'
+      }));
+    }
+
+    return data.slice(0, 12).map(activity => ({
+      value: activity.metadata.value,
+      category: activity.metadata.category
     }));
   };
 
@@ -57,7 +66,7 @@ export default function ActivityTrends() {
       </div>
       <div className="relative h-32">
         <div className="absolute inset-0 flex items-end justify-between">
-          {generateDataPoints(12).map((point, index) => (
+          {generateDataPoints().map((point, index) => (
             <motion.div
               key={index}
               className="w-4 bg-gradient-to-t from-purple-500 to-pink-500 rounded-t-sm"

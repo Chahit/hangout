@@ -2,30 +2,28 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { MessageSquare, Heart, Share2, Image, Video, Plus, X, Trash2, ArrowUpDown, Clock, Sparkles, Send } from 'lucide-react';
+import { Heart, MessageCircle, Share, MoreVertical } from 'lucide-react';
+import { motion } from 'framer-motion';
+import type { Database } from '@/lib/database.types';
 import { format } from 'date-fns';
-import { motion, AnimatePresence } from 'framer-motion';
 import Modal from '@/components/shared/Modal';
+import { MessageSquare, Plus, X, Trash2, ArrowUpDown, Clock, Sparkles, Send } from 'lucide-react';
+
+interface Confession {
+  id: string;
+  content: string;
+  created_at: string;
+  user_id: string;
+  likes: number;
+  comments: number;
+  anonymous: boolean;
+}
 
 interface ConfessionLike {
   id: string;
   confession_id: string;
   user_id: string;
   created_at: string;
-}
-
-interface Confession {
-  id: string;
-  content: string;
-  anonymous_name: string;
-  media_url?: string;
-  media_type?: 'image' | 'video';
-  likes: number;
-  created_at: string;
-  comments: Comment[];
-  has_liked?: boolean;
-  user_id: string;
-  likes_data?: ConfessionLike[];
 }
 
 interface Comment {
@@ -100,7 +98,7 @@ export default function ConfessionsPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
-  const supabase = createClientComponentClient();
+  const supabase = createClientComponentClient<Database>();
 
   useEffect(() => {
     fetchConfessions();
@@ -486,7 +484,7 @@ export default function ConfessionsPage() {
                   whileTap="tap"
                   className="flex items-center gap-2 text-sm text-gray-400 hover:text-blue-500 transition-colors"
                 >
-                  <Share2 className="w-4 h-4" />
+                  <Share className="w-4 h-4" />
                   Share
                 </motion.button>
               </div>
