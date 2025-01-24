@@ -82,6 +82,30 @@ export default function GroupChatPage() {
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    if (!user) return;
+    
+    // Set up realtime subscription
+    const channel = supabase
+      .channel(`group_${params.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'messages',
+        filter: `group_id=eq.${params.id}`
+      }, (payload) => {
+        // Handle message updates
+        console.log('Received message:', payload);
+        fetchMessages();
+      })
+      .subscribe();
+
+    // Cleanup subscription on unmount or hot reload
+    return () => {
+      channel.unsubscribe().catch(console.error);
+    };
+  }, [params.id, user]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };

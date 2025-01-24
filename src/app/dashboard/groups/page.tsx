@@ -116,9 +116,14 @@ export default function GroupsPage() {
   const router = useRouter();
 
   useEffect(() => {
-    fetchGroups();
     fetchCurrentUser();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchGroups();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (groups.length > 0) {
@@ -134,6 +139,8 @@ export default function GroupsPage() {
   };
 
   const fetchGroups = async () => {
+    if (!user) return;
+    
     setLoading(true);
     setError('');
     try {
@@ -146,7 +153,7 @@ export default function GroupsPage() {
       const { data: membershipsData, error: membershipsError } = await supabase
         .from('group_members')
         .select('*')
-        .eq('user_id', user?.id);
+        .eq('user_id', user.id);
 
       if (membershipsError) throw membershipsError;
 
@@ -173,38 +180,60 @@ export default function GroupsPage() {
       lastActivity: undefined
     };
     
-    for (const group of groups) {
-      try {
+    try {
+      for (const group of groups) {
         // Fetch total members
-        const { count: totalMembers } = await supabase
+        const { count: totalMembers, error: membersError } = await supabase
           .from('group_members')
           .select('*', { count: 'exact' })
           .eq('group_id', group.id);
 
-        // Fetch active members today
+        if (!membersError) {
+          stats.totalMembers += totalMembers || 0;
+        }
+
+        // Fetch message stats
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+
         const { count: activeMembers } = await supabase
-          .from('group_messages')
+          .from('messages')
           .select('DISTINCT user_id', { count: 'exact' })
           .eq('group_id', group.id)
           .gte('created_at', today.toISOString());
 
-        // Fetch total messages
         const { count: messageCount } = await supabase
-          .from('group_messages')
+          .from('messages')
           .select('*', { count: 'exact' })
           .eq('group_id', group.id);
 
-        stats.totalMembers = totalMembers || 0;
-        stats.activeMembers = activeMembers || 0;
-        stats.messageCount = messageCount || 0;
-      } catch (error) {
-        console.error(`Error fetching stats for group ${group.id}:`, error);
-      }
-    }
+        stats.activeMembers += activeMembers || 0;
+        stats.messageCount += messageCount || 0;
 
-    setStats(stats);
+        // Get last activity
+        const { data: lastMessage } = await supabase
+          .from('messages')
+          .select('created_at')
+          .eq('group_id', group.id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (lastMessage && lastMessage.length > 0) {
+          stats.lastActivity = lastMessage[0].created_at;
+        }
+      }
+
+      setStats(stats);
+    } catch (error) {
+      console.error('Error fetching group stats:', error);
+      // Set default stats instead of leaving them empty
+      setStats({
+        totalMembers: 0,
+        activeMembers: 0,
+        messageCount: 0,
+        lastActivity: undefined
+      });
+    }
   };
 
   // Filter and sort groups
