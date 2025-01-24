@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Heart, Check, X, MessageCircle, Loader2 } from 'lucide-react';
+import { Check, X, Loader2, Heart } from 'lucide-react';
+import type { Database } from '@/lib/database.types';
 
 interface MatchRequest {
   id: string;
   sender_id: string;
   sender_email: string;
   sender_profile: {
-    bio: string;
+    bio: string | null;
     interests: string[];
   };
   compatibility_score: number;
@@ -17,19 +18,17 @@ interface MatchRequest {
 }
 
 export default function RequestsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createClientComponentClient<Database>();
   const [requests, setRequests] = useState<MatchRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  useEffect(() => {
-    fetchRequests();
-  }, []);
-
-  async function fetchRequests() {
+  const fetchRequests = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        throw new Error('Not authenticated');
+      }
 
       const { data, error } = await supabase
         .from('dating_matches')
@@ -43,12 +42,17 @@ export default function RequestsPage() {
             )
           )
         `)
-        .eq('receiver_id', user.id)
+        .eq('receiver_id', session.user.id)
         .eq('status', 'pending');
 
       if (error) throw error;
 
-      const formattedRequests = data.map((request: any) => ({
+      if (!data) {
+        setRequests([]);
+        return;
+      }
+
+      const formattedRequests: MatchRequest[] = data.map((request) => ({
         id: request.id,
         sender_id: request.sender_id,
         sender_email: request.sender.email,
@@ -64,9 +68,9 @@ export default function RequestsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [supabase]);
 
-  async function handleRequest(requestId: string, action: 'accept' | 'reject') {
+  const handleRequest = useCallback(async (requestId: string, action: 'accept' | 'reject') => {
     try {
       const { error } = await supabase
         .from('dating_matches')
@@ -75,7 +79,6 @@ export default function RequestsPage() {
 
       if (error) throw error;
 
-      // Update local state
       setRequests(prev => prev.filter(request => request.id !== requestId));
       setMessage({
         type: 'success',
@@ -88,7 +91,11 @@ export default function RequestsPage() {
         text: `Failed to ${action} match request. Please try again.`
       });
     }
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchRequests();
+  }, [fetchRequests]);
 
   if (loading) {
     return (
@@ -170,4 +177,4 @@ export default function RequestsPage() {
       </div>
     </div>
   );
-} 
+}

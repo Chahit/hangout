@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useParams, useRouter } from 'next/navigation';
 import { Send, ArrowLeft } from 'lucide-react';
@@ -41,10 +41,100 @@ export default function GroupChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [groupInfo, setGroupInfo] = useState<GroupInfo | null>(null);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{ id: string; email: string | undefined } | null>(null);
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [ablyChannel, setAblyChannel] = useState<any>(null);
+  const [ablyChannel, setAblyChannel] = useState<Ably.RealtimeChannel | null>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const fetchUserForMessage = useCallback(async (message: Message) => {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('name')
+      .eq('id', message.user_id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching user profile:', error);
+      return message;
+    }
+
+    return {
+      ...message,
+      user: profile
+    };
+  }, [supabase]);
+
+  const fetchMessages = useCallback(async () => {
+    try {
+      const { data: messages, error } = await supabase
+        .from('messages')
+        .select(`
+          *,
+          profiles:user_id (
+            name
+          )
+        `)
+        .eq('group_id', params.id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setMessages(messages.map(msg => ({
+        ...msg,
+        user: msg.profiles
+      })));
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      setLoading(false);
+    }
+  }, [supabase, params.id]);
+
+  const fetchUser = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const { id, email } = session.user;
+      setUser({ id, email: email || undefined });
+    } else {
+      router.push('/auth');
+    }
+  }, [supabase, router]);
+
+  const fetchGroupInfo = useCallback(async () => {
+    try {
+      const { data: group, error } = await supabase
+        .from('groups')
+        .select(`
+          *,
+          members:group_members (
+            user_id,
+            role,
+            profiles:user_id (
+              name
+            )
+          )
+        `)
+        .eq('id', params.id)
+        .single();
+
+      if (error) throw error;
+      setGroupInfo(group);
+    } catch (error) {
+      console.error('Error fetching group info:', error);
+    }
+  }, [supabase, params.id]);
+
+  useEffect(() => {
+    const fetchUserAndSetup = async () => {
+      await fetchUser();
+      await fetchGroupInfo();
+      await fetchMessages();
+    };
+    fetchUserAndSetup();
+  }, [fetchUser, fetchGroupInfo, fetchMessages]);
 
   useEffect(() => {
     // Initialize Ably
@@ -73,17 +163,7 @@ export default function GroupChatPage() {
   }, [params.id]);
 
   useEffect(() => {
-    fetchUser();
-    fetchGroupInfo();
-    fetchMessages();
-  }, [params.id]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  useEffect(() => {
-    if (!user) return;
+    if (!user || !supabase) return;
     
     // Set up realtime subscription
     const channel = supabase
@@ -93,98 +173,20 @@ export default function GroupChatPage() {
         schema: 'public',
         table: 'messages',
         filter: `group_id=eq.${params.id}`
-      }, (payload) => {
-        // Handle message updates
-        console.log('Received message:', payload);
+      }, () => {
         fetchMessages();
       })
       .subscribe();
 
     // Cleanup subscription on unmount or hot reload
     return () => {
-      channel.unsubscribe().catch(console.error);
+      channel.unsubscribe();
     };
-  }, [params.id, user]);
+  }, [params.id, user, supabase, fetchMessages]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const fetchUserForMessage = async (message: Message) => {
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('name')
-      .eq('id', message.user_id)
-      .single();
-
-    if (error) {
-      console.error('Error fetching user profile:', error);
-      return message;
-    }
-
-    return {
-      ...message,
-      user: profile
-    };
-  };
-
-  const fetchUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      setUser(session.user);
-    } else {
-      router.push('/auth');
-    }
-  };
-
-  const fetchGroupInfo = async () => {
-    try {
-      const { data: group, error } = await supabase
-        .from('groups')
-        .select(`
-          *,
-          members:group_members (
-            user_id,
-            role,
-            profiles:user_id (
-              name
-            )
-          )
-        `)
-        .eq('id', params.id)
-        .single();
-
-      if (error) throw error;
-      setGroupInfo(group);
-    } catch (error) {
-      console.error('Error fetching group info:', error);
-    }
-  };
-
-  const fetchMessages = async () => {
-    try {
-      const { data: messages, error } = await supabase
-        .from('messages')
-        .select(`
-          *,
-          profiles:user_id (
-            name
-          )
-        `)
-        .eq('group_id', params.id)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setMessages(messages.map(msg => ({
-        ...msg,
-        user: msg.profiles
-      })));
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();

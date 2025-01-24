@@ -1,6 +1,5 @@
 import { useState, useRef } from "react";
 import { Mic, Square, Send } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 
 interface VoiceRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;

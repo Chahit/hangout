@@ -6,11 +6,8 @@ import {
   MessageCircle, 
   Plus, 
   Tag, 
-  ThumbsUp, 
   User, 
   Search,
-  X,
-  Sparkles,
   ArrowRight
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -214,32 +211,24 @@ export default function SupportPage() {
     }
   };
 
-  const handleAcceptResponse = async (postId: string, responseId: string) => {
+  const handleAcceptResponse = useCallback(async (postId: string, responseId: string) => {
     try {
       if (!user) return;
 
-      // First, update the post to mark it as resolved
-      const { error: postError } = await supabase
-        .from('support_posts')
-        .update({ is_resolved: true })
-        .eq('id', postId)
-        .eq('created_by', user.id);
+      const post = posts.find(p => p.id === postId);
+      if (!post || post.created_by !== user.id) return;
 
-      if (postError) throw postError;
-
-      // Then, mark the response as accepted
-      const { error: responseError } = await supabase
+      const { error } = await supabase
         .from('support_responses')
         .update({ is_accepted: true })
         .eq('id', responseId);
 
-      if (responseError) throw responseError;
-
+      if (error) throw error;
       fetchPosts();
     } catch (error) {
       console.error('Error accepting response:', error);
     }
-  };
+  }, [user, posts, supabase, fetchPosts]);
 
   const handleDeletePost = async (postId: string) => {
     try {
@@ -402,7 +391,7 @@ export default function SupportPage() {
                     whileTap={{ scale: 0.9 }}
                     className="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-500/10 transition-all"
                   >
-                    <X className="w-4 h-4" />
+                    <ArrowRight className="w-4 h-4" />
                   </motion.button>
                 )}
               </div>
@@ -458,18 +447,12 @@ export default function SupportPage() {
                                 onClick={() => handleDeleteResponse(response.id)}
                                 className="text-red-400 hover:text-red-300 transition-colors"
                               >
-                                <X className="w-4 h-4" />
+                                <ArrowRight className="w-4 h-4" />
                               </button>
                             )}
                           </div>
                         </div>
                         <p className="text-sm text-gray-400">{response.content}</p>
-                        {response.is_accepted && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <ThumbsUp className="w-4 h-4 text-purple-500" />
-                            <span className="text-xs text-purple-500">Accepted</span>
-                          </div>
-                        )}
                       </div>
                     ))}
                   </div>
@@ -512,7 +495,7 @@ export default function SupportPage() {
                   onClick={() => setShowCreateModal(false)}
                   className="text-gray-400 hover:text-white transition-colors"
                 >
-                  <X className="w-5 h-5" />
+                  <ArrowRight className="w-5 h-5" />
                 </button>
               </div>
 
@@ -576,7 +559,7 @@ export default function SupportPage() {
                   className="w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
                   disabled={!newPost.title.trim() || !newPost.content.trim() || !newPost.category}
                 >
-                  <Sparkles className="w-4 h-4" />
+                  <ArrowRight className="w-4 h-4" />
                   Create Post
                 </motion.button>
               </form>

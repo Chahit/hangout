@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { 
-  Share2, Calendar, Plus, HelpCircle, TrendingUp, Coffee,
-  ShoppingBag, Briefcase, Search, MapPin,
-  Sparkles, Clock, ArrowRight, Send, ImageIcon, PartyPopper,
-  Users, MessageSquare, Bell, MessageCircle, Heart
+  Calendar, TrendingUp,
+  Users, MessageSquare, Bell, MessageCircle, Heart,
+  Share2, PartyPopper
 } from "lucide-react";
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import Image from 'next/image';
 import ActivityTrends from './components/ActivityTrends';
 
 // Animation variants
@@ -19,11 +19,6 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
   hover: { scale: 1.02 },
   tap: { scale: 0.98 }
-};
-
-const buttonVariants = {
-  hover: { scale: 1.05 },
-  tap: { scale: 0.95 }
 };
 
 // Floating background shapes component
@@ -141,37 +136,39 @@ export default function DashboardPage() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
   const [suggestedGroups, setSuggestedGroups] = useState<Group[]>([]);
-  const [quickPost, setQuickPost] = useState('');
   const [notificationCount, setNotificationCount] = useState(0);
   const supabase = createClientComponentClient();
 
-  useEffect(() => {
-    fetchDashboardData();
-    fetchNotifications();
-    // Set up real-time subscription for notifications
-    const channel = supabase
-      .channel('notifications')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications'
-      }, () => {
-        fetchNotifications();
-      })
-      .subscribe();
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+      const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.id)
+        .eq('is_read', false)
+        .single();
 
-  const fetchDashboardData = async () => {
+      setNotificationCount(count || 0);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
+  }, [supabase]);
+
+  const fetchDashboardData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // Fetch stats
-      const stats = await Promise.all([
+      const [
+        { count: unreadMessages },
+        { count: upcomingEventsCount },
+        { count: notifications },
+        { count: datingMatches }
+      ] = await Promise.all([
         // Fetch unread messages
         supabase
           .from('direct_messages')
@@ -198,32 +195,19 @@ export default function DashboardPage() {
           .from('dating_connections')
           .select('id', { count: 'exact' })
           .eq('status', 'accepted')
-          .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`),
-
-        // Fetch group memberships
-        supabase
-          .from('group_members')
-          .select('id', { count: 'exact' })
-          .eq('user_id', user.id),
+          .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
       ]);
 
-      setStats({
-        unreadMessages: stats[0].count || 0,
-        upcomingEvents: stats[1].count || 0,
-        notifications: stats[2].count || 0,
-        totalConnections: stats[3].count || 0,
-        communities: stats[4].count || 0,
-        activeChats: 0,
-        eventParticipation: 0,
-        groupEngagement: 0,
-        datingMatches: stats[3].count || 0,
-        pendingConfessions: 0,
-        supportResponses: 0,
-        memeInteractions: 0
-      });
+      setStats(prev => ({
+        ...prev,
+        unreadMessages: unreadMessages || 0,
+        upcomingEvents: upcomingEventsCount || 0,
+        notifications: notifications || 0,
+        datingMatches: datingMatches || 0
+      }));
 
-      // Fetch recent activities
-      const { data: activities } = await supabase
+      // Fetch activities
+      const { data: activitiesData } = await supabase
         .from('activities')
         .select(`
           *,
@@ -232,35 +216,32 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(5);
 
-      if (activities) {
-        setActivities(activities.map(activity => ({
-          ...activity,
-          timestamp: activity.created_at
-        })));
+      if (activitiesData) {
+        setActivities(activitiesData);
       }
 
       // Fetch upcoming events
-      const { data: events } = await supabase
+      const { data: eventsData } = await supabase
         .from('events')
         .select(`
           *,
+          group:groups(id, name),
           participants:event_participants(
             user:profiles(id, name),
             status
-          ),
-          group:groups(id, name)
+          )
         `)
         .gte('start_time', new Date().toISOString())
         .eq('is_approved', true)
         .order('start_time', { ascending: true })
         .limit(3);
 
-      if (events) {
-        setUpcomingEvents(events);
+      if (eventsData) {
+        setUpcomingEvents(eventsData);
       }
 
-      // Fetch user's groups
-      const { data: groups } = await supabase
+      // Fetch suggested groups
+      const { data: groupsData } = await supabase
         .from('groups')
         .select(`
           *,
@@ -270,72 +251,36 @@ export default function DashboardPage() {
           ),
           events(*)
         `)
-        .order('created_at', { ascending: false })
         .limit(3);
 
-      if (groups) {
-        setSuggestedGroups(groups);
+      if (groupsData) {
+        setSuggestedGroups(groupsData);
       }
-
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     }
-  };
+  }, [supabase]);
 
-  const fetchNotifications = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  useEffect(() => {
+    fetchDashboardData();
+    fetchNotifications();
+    
+    // Set up real-time subscription for notifications
+    const channel = supabase
+      .channel('notifications')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications'
+      }, () => {
+        fetchNotifications();
+      })
+      .subscribe();
 
-      const { count } = await supabase
-        .from('notifications')
-        .select('*', { count: 'exact' })
-        .eq('user_id', user.id)
-        .eq('is_read', false);
-
-      setNotificationCount(count || 0);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    }
-  };
-
-  const handleNotificationClick = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Mark all notifications as read
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', user.id)
-        .eq('is_read', false);
-
-      setNotificationCount(0);
-    } catch (error) {
-      console.error('Error updating notifications:', error);
-    }
-  };
-
-  const handleQuickPost = async () => {
-    if (!quickPost.trim()) return;
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      await supabase.from('posts').insert({
-        content: quickPost,
-        user_id: user.id,
-        created_at: new Date().toISOString()
-      });
-
-      setQuickPost('');
-      // Optionally refresh activities
-    } catch (error) {
-      console.error('Error creating post:', error);
-    }
-  };
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, fetchDashboardData, fetchNotifications]);
 
   return (
     <div className="min-h-screen w-full relative font-cabinet-grotesk">
@@ -347,7 +292,7 @@ export default function DashboardPage() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl md:text-4xl font-clash-display font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-purple-600 text-transparent bg-clip-text">
-              Welcome Back! ✨
+              Welcome Back! 
             </h1>
             <p className="text-gray-400 mt-1">
               Here's what's happening in your college community

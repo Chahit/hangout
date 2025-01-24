@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Heart, Send, Plus, X, Trash2, ArrowUpDown } from 'lucide-react';
+import { Heart, Send, Plus, ArrowUpDown } from 'lucide-react';
 import { format } from 'date-fns';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import Image from 'next/image';
 import Modal from '@/components/shared/Modal';
 
 interface Meme {
@@ -29,6 +30,9 @@ interface MemeComment {
   user_id: string;
   user_name: string;
   meme_id: string;
+  profiles?: {
+    name: string;
+  };
 }
 
 interface MemeLike {
@@ -106,17 +110,19 @@ export default function MemesPage() {
   const [showPostModal, setShowPostModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'newest' | 'mostLiked'>('newest');
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
   const supabase = createClientComponentClient();
 
-  useEffect(() => {
-    fetchMemes();
-    getCurrentUser();
-  }, []);
+  const getCurrentUser = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { id, email } = user;
+      setCurrentUser({ id, email });
+    }
+  }, [supabase]);
 
-  const fetchMemes = async () => {
+  const fetchMemes = useCallback(async () => {
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) return;
 
       const { data: memesData, error } = await supabase
@@ -141,9 +147,9 @@ export default function MemesPage() {
         const formattedMemes = memesData.map((meme: Meme) => ({
           ...meme,
           user_name: meme.profiles?.name || 'Anonymous',
-          has_liked: meme.likes?.some((like: { user_id: string }) => like.user_id === currentUser.id) || false,
+          has_liked: meme.likes?.some(like => like.user_id === currentUser.id) || false,
           likes_count: meme.likes?.length || 0,
-          comments: meme.comments?.map((comment: any) => ({
+          comments: meme.comments?.map(comment => ({
             ...comment,
             user_name: comment.profiles?.name || 'Anonymous'
           })) || []
@@ -156,12 +162,17 @@ export default function MemesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, currentUser]);
 
-  const getCurrentUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    setCurrentUser(user);
-  };
+  useEffect(() => {
+    getCurrentUser();
+  }, [getCurrentUser]);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchMemes();
+    }
+  }, [currentUser, fetchMemes]);
 
   if (loading) {
     return (
@@ -200,185 +211,73 @@ export default function MemesPage() {
             <h1 className="text-2xl md:text-3xl font-clash-display font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-purple-600 text-transparent bg-clip-text">
               Campus Memes ✨
             </h1>
-            <p className="text-sm md:text-base text-gray-400 mt-1">
-              Share and enjoy the best college moments
-            </p>
           </div>
-          <motion.button
-            variants={buttonVariants}
-            whileHover="hover"
-            whileTap="tap"
-            onClick={() => setShowPostModal(true)}
-            className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition-all text-sm md:text-base flex items-center justify-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Post Meme
-          </motion.button>
-        </div>
-
-        {/* Sort Controls */}
-        <div className="flex items-center gap-2 text-sm">
-          <ArrowUpDown className="w-4 h-4 text-gray-400" />
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as 'newest' | 'mostLiked')}
-            className="bg-white/5 text-gray-400 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          >
-            <option value="newest">Newest First</option>
-            <option value="mostLiked">Most Liked</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <motion.button
+              variants={buttonVariants}
+              whileHover="hover"
+              whileTap="tap"
+              onClick={() => setSortBy(sortBy === 'newest' ? 'mostLiked' : 'newest')}
+              className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
+            >
+              <ArrowUpDown className="w-4 h-4" />
+              <span>{sortBy === 'newest' ? 'Latest' : 'Most Liked'}</span>
+            </motion.button>
+            <motion.button
+              variants={buttonVariants}
+              whileHover="hover"
+              whileTap="tap"
+              onClick={() => setShowPostModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 text-purple-400 rounded-lg hover:bg-purple-500/30 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>New Meme</span>
+            </motion.button>
+          </div>
         </div>
 
         {/* Memes Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-          {sortedMemes.map((meme, index) => (
+        <div className="grid grid-cols-1 gap-6">
+          {sortedMemes.map((meme) => (
             <motion.div
               key={meme.id}
               variants={cardVariants}
               initial="hidden"
               animate="visible"
-              transition={{ delay: index * 0.1 }}
-              className="glass-morphism rounded-xl overflow-hidden"
+              exit="exit"
+              className="bg-white/5 rounded-xl overflow-hidden hover:bg-white/10 transition-colors"
             >
-              {/* Meme Header */}
-              <div className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-medium">
-                    {meme.user_name[0].toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-sm md:text-base truncate">
-                      {meme.title}
-                    </h3>
-                    <p className="text-xs text-gray-400">
-                      {format(new Date(meme.created_at), 'MMM d, h:mm a')}
-                    </p>
+              <div className="p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm">
+                      <span className="font-medium text-purple-400">{meme.user_name}</span>
+                      <span className="text-gray-400 ml-2">
+                        {format(new Date(meme.created_at), 'MMM d, yyyy')}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Meme Image */}
-              <div className="relative aspect-square bg-black/20">
-                {meme.media_type === 'video' ? (
-                  <video
-                    src={meme.media_url}
-                    className="w-full h-auto max-h-96 object-cover rounded-lg"
-                    controls
-                  />
-                ) : (
-                  <img
+                <h3 className="text-lg font-medium mb-4">{meme.title}</h3>
+                {meme.media_type === 'image' ? (
+                  <Image
                     src={meme.media_url}
                     alt={meme.title}
-                    className="w-full h-auto max-h-96 object-cover rounded-lg"
+                    width={800}
+                    height={600}
+                    className="rounded-lg w-full"
+                  />
+                ) : (
+                  <video
+                    src={meme.media_url}
+                    controls
+                    className="rounded-lg w-full"
                   />
                 )}
-              </div>
-
-              {/* Meme Actions */}
-              <div className="p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <motion.button
-                      variants={buttonVariants}
-                      whileHover="hover"
-                      whileTap="tap"
-                      className="flex items-center gap-1.5 text-gray-400 hover:text-red-400"
-                    >
-                      <Heart className="w-5 h-5" />
-                      <span className="text-sm">{meme.likes_count}</span>
-                    </motion.button>
-                  </div>
-                  <span className="text-xs text-gray-400">
-                    {format(new Date(meme.created_at), 'MMM d')}
-                  </span>
-                </div>
               </div>
             </motion.div>
           ))}
         </div>
-
-        {/* Empty State */}
-        {sortedMemes.length === 0 && (
-          <motion.div
-            variants={cardVariants}
-            initial="hidden"
-            animate="visible"
-            className="text-center py-12"
-          >
-            <motion.div
-              animate={{ y: [0, -10, 0] }}
-              transition={{ duration: 2, repeat: Infinity }}
-              className="inline-block"
-            >
-              <img className="w-12 h-12 text-purple-500 mx-auto mb-4" />
-            </motion.div>
-            <h3 className="text-lg md:text-xl font-medium mb-2">No Memes Yet</h3>
-            <p className="text-gray-400 text-sm md:text-base">
-              Be the first to share a meme with your campus!
-            </p>
-          </motion.div>
-        )}
-
-        {/* Post Modal */}
-        {showPostModal && (
-          <Modal onClose={() => setShowPostModal(false)} maxWidth="max-w-md">
-            <div className="bg-gray-900 p-4 rounded-2xl">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-clash-display font-bold">
-                  Post a Meme
-                </h2>
-                <button
-                  onClick={() => setShowPostModal(false)}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Title</label>
-                  <input
-                    type="text"
-                    className="w-full bg-white/5 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="Give your meme a title..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Image</label>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept="image/*, video/*"
-                      className="hidden"
-                      id="meme-upload"
-                    />
-                    <label
-                      htmlFor="meme-upload"
-                      className="block w-full h-[200px] rounded-lg border-2 border-dashed border-gray-600 hover:border-purple-500 transition-colors cursor-pointer"
-                    >
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
-                        <img className="w-6 h-6 mb-1" />
-                        <span className="text-sm">Click to upload an image or video</span>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                <motion.button
-                  variants={buttonVariants}
-                  whileHover="hover"
-                  whileTap="tap"
-                  className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:opacity-90 transition-all text-sm flex items-center justify-center gap-2"
-                >
-                  <Send className="w-4 h-4" />
-                  Post Meme
-                </motion.button>
-              </div>
-            </div>
-          </Modal>
-        )}
       </div>
     </div>
   );

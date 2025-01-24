@@ -1,18 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { calculateCompatibilityScore } from '../questions';
 import { Heart, UserPlus, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import type { Database } from '@/lib/database.types';
 import { motion } from 'framer-motion';
-
-interface Profile {
-  id: string;
-  name: string;
-  email: string;
-}
 
 interface DatingProfile {
   id: string;
@@ -21,7 +15,7 @@ interface DatingProfile {
   looking_for: 'male' | 'female';
   bio: string | null;
   interests: string[];
-  answers: Record<string, any>;
+  answers: Record<string, string>;
   has_completed_profile: boolean;
   created_at: string;
   updated_at: string;
@@ -33,14 +27,6 @@ interface DatingProfile {
   compatibility?: number;
 }
 
-interface DatingConnection {
-  id: string;
-  from_user_id: string;
-  to_user_id: string;
-  status: 'pending' | 'accepted' | 'rejected';
-  created_at: string;
-}
-
 export default function MatchesPage() {
   const supabase = createClientComponentClient<Database>();
   const [matches, setMatches] = useState<DatingProfile[]>([]);
@@ -48,7 +34,7 @@ export default function MatchesPage() {
   const [userProfile, setUserProfile] = useState<DatingProfile | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  const fetchMatches = async () => {
+  const fetchMatches = useCallback(async () => {
     try {
       setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
@@ -92,30 +78,30 @@ export default function MatchesPage() {
 
       if (matchesError) throw matchesError;
 
-      // Calculate compatibility scores
-      const matchesWithScores = potentialMatches.map((match) => ({
-        ...match,
-        compatibility: calculateCompatibilityScore(myProfile.answers, match.answers)
-      }));
+      // Calculate compatibility scores and sort by score
+      const matchesWithScores = potentialMatches
+        .map((match) => ({
+          ...match,
+          compatibility: calculateCompatibilityScore(myProfile.answers, match.answers)
+        }))
+        .sort((a, b) => (b.compatibility || 0) - (a.compatibility || 0));
 
-      // Sort by compatibility score
-      const sortedMatches = matchesWithScores.sort((a, b) => 
-        (b.compatibility || 0) - (a.compatibility || 0)
-      );
-
-      setMatches(sortedMatches);
+      setMatches(matchesWithScores);
     } catch (error) {
       console.error('Error fetching matches:', error);
       setMessage({ type: 'error', text: 'Failed to load matches' });
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
 
-  const createConnection = async (toUserId: string) => {
+  const createConnection = useCallback(async (toUserId: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) {
+        setMessage({ type: 'error', text: 'You must be logged in' });
+        return;
+      }
 
       const { error } = await supabase
         .from('dating_connections')
@@ -127,16 +113,16 @@ export default function MatchesPage() {
 
       if (error) throw error;
       setMessage({ type: 'success', text: 'Connection request sent!' });
-      fetchMatches();
+      await fetchMatches();
     } catch (error) {
       console.error('Error creating connection:', error);
       setMessage({ type: 'error', text: 'Failed to send connection request' });
     }
-  };
+  }, [supabase, fetchMatches]);
 
   useEffect(() => {
     fetchMatches();
-  }, []);
+  }, [fetchMatches]);
 
   return (
     <div className="container mx-auto px-4 py-8">

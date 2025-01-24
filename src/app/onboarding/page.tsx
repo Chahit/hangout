@@ -79,7 +79,7 @@ export default function OnboardingPage() {
         <div>
           <h2 className="text-3xl font-bold text-center">Complete Your Profile</h2>
           <p className="mt-2 text-center text-muted-foreground">
-            Let's get to know you better
+            Let&#39;s get to know you better
           </p>
         </div>
 
@@ -110,7 +110,7 @@ export default function OnboardingPage() {
                 value={formData.batch}
                 onChange={(e) => setFormData(prev => ({ ...prev, batch: e.target.value }))}
               >
-                <option value="">Select Batch</option>
+                <option value="">&nbsp;Select Batch</option>
                 {BATCHES.map(batch => (
                   <option key={batch} value={batch}>{batch}</option>
                 ))}
@@ -128,7 +128,7 @@ export default function OnboardingPage() {
                 value={formData.branch}
                 onChange={(e) => setFormData(prev => ({ ...prev, branch: e.target.value }))}
               >
-                <option value="">Select Branch</option>
+                <option value="">&nbsp;Select Branch</option>
                 {BRANCHES.map(branch => (
                   <option key={branch} value={branch}>{branch}</option>
                 ))}

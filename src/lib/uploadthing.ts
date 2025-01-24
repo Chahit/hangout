@@ -8,7 +8,7 @@ export const ourFileRouter = {
     .middleware(async () => {
       return { userId: "test" };
     })
-    .onUploadComplete(async ({ metadata, file }) => {
+    .onUploadComplete(async ({ file }) => {
       return { url: file.url };
     }),
 } satisfies FileRouter;

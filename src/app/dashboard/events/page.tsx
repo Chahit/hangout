@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Plus, X, ArrowRight, Calendar, Clock, MapPin, Users, Loader2 } from 'lucide-react';
-import Link from 'next/link';
 import { format } from 'date-fns';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Modal from '@/components/shared/Modal';
+import type { Database } from '@/lib/database.types';
 
 interface Event {
   id: string;
@@ -35,13 +35,6 @@ interface Event {
     id: string;
     name: string;
   };
-}
-
-interface GroupMember {
-  group: {
-    id: string;
-    name: string;
-  } | null;
 }
 
 interface GroupMemberResponse {
@@ -116,7 +109,7 @@ const handleParticipantUpdate = (prevEvents: Event[], eventId: string, userId: s
   return prevEvents.map(event => {
     if (event.id === eventId) {
       const updatedParticipants = [...(event.participants || [])];
-      const participantIndex = updatedParticipants.findIndex((participant: Event['participants'][0]) => participant.user_id === userId);
+      const participantIndex = updatedParticipants.findIndex(participant => participant.user_id === userId);
       
       if (participantIndex >= 0) {
         updatedParticipants[participantIndex] = newParticipant;
@@ -134,11 +127,11 @@ const handleParticipantUpdate = (prevEvents: Event[], eventId: string, userId: s
 };
 
 const isParticipant = (event: Event, userId: string): boolean => {
-  return event.participants.some((p: Event['participants'][0]) => p.user_id === userId);
+  return event.participants.some(p => p.user_id === userId);
 };
 
 export default function EventsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createClientComponentClient<Database>();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -154,17 +147,11 @@ export default function EventsPage() {
     max_participants: 0,
     group_id: '',
   });
-  const [userGroups, setUserGroups] = useState<{ id: string; name: string; }[]>([]);
+  const [userGroups, setUserGroups] = useState<Array<{ id: string; name: string; }>>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'mostLiked'>('newest');
 
-  useEffect(() => {
-    checkAdminStatus();
-    fetchEvents();
-    fetchUserGroups();
-  }, [activeTab]);
-
-  const checkAdminStatus = async () => {
+  const checkAdminStatus = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user?.email === 'cl883@snu.edu.in') {
@@ -173,12 +160,12 @@ export default function EventsPage() {
     } catch (error) {
       console.error('Error checking admin status:', error);
     }
-  };
+  }, [supabase]);
 
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
 
       const { data: events, error } = await supabase
         .from('events')
@@ -197,12 +184,12 @@ export default function EventsPage() {
 
       // Filter events based on visibility and approval
       const filteredEvents = events.filter(event => {
-        if (event.created_by === user.id) return true;
+        if (event.created_by === session.user.id) return true;
         if (!event.is_approved) return false;
         if (event.is_public) return true;
         if (event.group_id) {
-          return event.participants.some((p: Event['participants'][0]) => 
-            p.user.id === user.id && p.status === 'accepted'
+          return event.participants.some((p: { user: { id: string }, status: string }) => 
+            p.user.id === session.user.id && p.status === 'accepted'
           );
         }
         return false;
@@ -214,9 +201,51 @@ export default function EventsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
 
-  const createEvent = async (eventData: Partial<Event>) => {
+  const fetchUserGroups = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { data, error } = await supabase
+        .from('group_members')
+        .select('group_id, groups!inner(id, name)')
+        .eq('user_id', session.user.id)
+        .returns<GroupMemberResponse[]>();
+
+      if (error) throw error;
+      
+      if (data) {
+        const groups = data.map(item => ({
+          id: item.groups.id,
+          name: item.groups.name
+        }));
+        setUserGroups(groups);
+      }
+    } catch (error) {
+      console.error('Error fetching user groups:', error);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    checkAdminStatus();
+    fetchEvents();
+    fetchUserGroups();
+  }, [checkAdminStatus, fetchEvents, fetchUserGroups, activeTab]);
+
+  const sortEvents = useCallback((a: Event, b: Event): number => {
+    switch (sortBy) {
+      case 'oldest':
+        return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
+      case 'mostLiked':
+        return (b.participants?.length || 0) - (a.participants?.length || 0);
+      default:
+        return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
+    }
+  }, [sortBy]);
+
+  const createEvent = useCallback(async (eventData: Partial<Event>) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
@@ -274,9 +303,9 @@ export default function EventsPage() {
     } catch (error) {
       console.error('Error creating event:', error);
     }
-  };
+  }, [supabase, selectedFile]);
 
-  const handleJoinEvent = async (eventId: string) => {
+  const handleJoinEvent = useCallback(async (eventId: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
@@ -312,9 +341,9 @@ export default function EventsPage() {
     } catch (error) {
       console.error('Error joining event:', error);
     }
-  };
+  }, [supabase]);
 
-  const respondToParticipant = async (eventId: string, userId: string, status: 'accepted' | 'declined') => {
+  const respondToParticipant = useCallback(async (eventId: string, userId: string, status: 'accepted' | 'declined') => {
     try {
       const { error } = await supabase
         .from('event_participants')
@@ -323,7 +352,6 @@ export default function EventsPage() {
 
       if (error) throw error;
 
-      // Update local state
       setEvents(prev => prev.map(event => {
         if (event.id === eventId) {
           return {
@@ -341,43 +369,7 @@ export default function EventsPage() {
     } catch (error) {
       console.error('Error responding to participant:', error);
     }
-  };
-
-  const fetchUserGroups = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
-
-      const { data, error } = await supabase
-        .from('group_members')
-        .select('group_id, groups!inner(id, name)')
-        .eq('user_id', session.user.id)
-        .returns<GroupMemberResponse[]>();
-
-      if (error) throw error;
-      
-      if (data) {
-        const groups = data.map(item => ({
-          id: item.groups.id,
-          name: item.groups.name
-        }));
-        setUserGroups(groups);
-      }
-    } catch (error) {
-      console.error('Error fetching user groups:', error);
-    }
-  };
-
-  const sortEvents = (a: Event, b: Event): number => {
-    switch (sortBy) {
-      case 'oldest':
-        return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
-      case 'mostLiked':
-        return (b.participants?.length || 0) - (a.participants?.length || 0);
-      default:
-        return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
-    }
-  };
+  }, [supabase]);
 
   if (loading) {
     return (

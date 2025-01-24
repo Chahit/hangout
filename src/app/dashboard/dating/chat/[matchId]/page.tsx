@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useParams } from 'next/navigation';
 import { Send, ArrowLeft, Loader2 } from 'lucide-react';
@@ -35,39 +35,13 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [matchInfo, setMatchInfo] = useState<MatchInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const setup = async () => {
-      await Promise.all([
-        fetchMatchInfo(),
-        fetchMessages()
-      ]);
-      handleNewMessage();
-    };
-    setup();
-  }, [matchId]);
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUser({
-          id: user.id,
-          name: user.user_metadata.name || user.email?.split('@')[0] || 'Anonymous',
-          email: user.email || ''
-        });
-      }
-    };
-    getUser();
-  }, [supabase.auth]);
-
-  async function fetchMatchInfo() {
+  const fetchMatchInfo = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -105,9 +79,9 @@ export default function ChatPage() {
       setError('Failed to load chat. Please try again.');
       setLoading(false);
     }
-  }
+  }, [supabase, matchId]);
 
-  async function fetchMessages() {
+  const fetchMessages = useCallback(async () => {
     try {
       const { data: messages, error: messagesError } = await supabase
         .from('dating_messages')
@@ -130,9 +104,9 @@ export default function ChatPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [supabase, matchId]);
 
-  function handleNewMessage() {
+  const handleNewMessage = useCallback(() => {
     const messagesChannel = supabase.channel(`match:${matchId}`)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -148,7 +122,32 @@ export default function ChatPage() {
     return () => {
       supabase.removeChannel(messagesChannel);
     };
-  }
+  }, [supabase, matchId]);
+
+  useEffect(() => {
+    const setup = async () => {
+      await Promise.all([
+        fetchMatchInfo(),
+        fetchMessages()
+      ]);
+      handleNewMessage();
+    };
+    setup();
+  }, [fetchMatchInfo, fetchMessages, handleNewMessage]);
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUser({
+          id: user.id,
+          name: user.user_metadata.name || user.email?.split('@')[0] || 'Anonymous',
+          email: user.email || ''
+        });
+      }
+    };
+    getUser();
+  }, [supabase.auth]);
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
@@ -186,41 +185,21 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
-  const fetchUserDetails = async (userId: string) => {
-    try {
-      const { data: userData, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-      return userData;
-    } catch (error) {
-      console.error('Error fetching user details:', error);
-      return null;
-    }
-  };
-
-  if (error) {
+  if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <p className="text-red-500 mb-4">{error}</p>
-        <Link
-          href="/dashboard/dating/matches"
-          className="flex items-center gap-2 text-purple-500 hover:text-purple-400"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Matches
-        </Link>
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
       </div>
     );
   }
 
-  if (loading) {
+  if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <p className="text-red-500">{error}</p>
+        <Link href="/dashboard/dating/matches" className="text-purple-500 hover:underline">
+          Return to Matches
+        </Link>
       </div>
     );
   }

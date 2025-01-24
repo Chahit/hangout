@@ -1,11 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { MessageSquare, User, Clock, Sparkles, Star, Filter, Circle } from 'lucide-react';
+import { MessageSquare, User as UserIcon, Clock, Star } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
+
+interface Message {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  created_at: string;
+  is_read: boolean;
+  message_type: 'text' | 'dating' | 'group' | 'event';
+  sender?: {
+    id: string;
+    name: string;
+  };
+  receiver?: {
+    id: string;
+    name: string;
+  };
+}
 
 interface User {
   id: string;
@@ -21,28 +39,6 @@ interface User {
   unread_count?: number;
   is_favorite?: boolean;
   connection_type?: 'dating' | 'group' | 'regular';
-}
-
-interface Message {
-  id: string;
-  sender_id: string;
-  receiver_id: string;
-  content: string;
-  created_at: string;
-  is_read: boolean;
-  message_type: 'text' | 'dating' | 'group' | 'event';
-  sender?: {
-    name: string;
-  };
-  receiver?: {
-    name: string;
-  };
-}
-
-interface ChatStats {
-  totalMessages: number;
-  lastActive: string;
-  averageResponseTime: number;
 }
 
 // Animation variants
@@ -88,43 +84,11 @@ const FloatingShapes = () => (
 export default function MessagesPage() {
   const supabase = createClientComponentClient();
   const [users, setUsers] = useState<User[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [chatStats, setChatStats] = useState<{[key: string]: ChatStats}>({});
+  const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
   const [filter, setFilter] = useState<'all' | 'unread' | 'favorites'>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'name' | 'unread'>('recent');
 
-  useEffect(() => {
-    const fetchCurrentUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setCurrentUser(session.user);
-        fetchMessages();
-        setupRealtimeSubscription(session.user.id);
-      }
-    };
-
-    fetchCurrentUser();
-  }, []);
-
-  const setupRealtimeSubscription = (userId: string) => {
-    const channel = supabase
-      .channel('messages')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'direct_messages',
-        filter: `receiver_id=eq.${userId}`
-      }, () => {
-        fetchMessages();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  };
-
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -150,11 +114,13 @@ export default function MessagesPage() {
 
       // Get unique users from messages
       const uniqueUsers = new Map<string, User>();
-      messages.forEach(message => {
+      messages.forEach((message: Message) => {
         const otherUser = message.sender_id === user.id ? message.receiver : message.sender;
         if (otherUser && !uniqueUsers.has(otherUser.id)) {
           uniqueUsers.set(otherUser.id, {
-            ...otherUser,
+            id: otherUser.id,
+            name: otherUser.name,
+            email: '', // Will be populated later if needed
             last_message: {
               content: message.content,
               created_at: message.created_at,
@@ -191,7 +157,9 @@ export default function MessagesPage() {
         const otherUser = conn.from_user_id === user.id ? conn.to_user : conn.from_user;
         if (otherUser && !uniqueUsers.has(otherUser.id)) {
           uniqueUsers.set(otherUser.id, {
-            ...otherUser,
+            id: otherUser.id,
+            name: otherUser.name,
+            email: '', // Will be populated later if needed
             connection_type: 'dating'
           });
         }
@@ -201,44 +169,44 @@ export default function MessagesPage() {
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
-  };
+  }, [supabase]);
 
-  const calculateChatStats = (messages: any[]): ChatStats => {
-    if (!messages.length) {
-      return {
-        totalMessages: 0,
-        lastActive: '',
-        averageResponseTime: 0
-      };
-    }
+  const setupRealtimeSubscription = useCallback((userId: string) => {
+    const channel = supabase
+      .channel('messages')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'direct_messages',
+        filter: `receiver_id=eq.${userId}`
+      }, () => {
+        fetchMessages();
+      })
+      .subscribe();
 
-    const lastActive = messages[0].created_at;
-    const totalMessages = messages.length;
-
-    // Calculate average response time
-    let totalResponseTime = 0;
-    let responseCount = 0;
-    
-    for (let i = 1; i < messages.length; i++) {
-      if (messages[i].sender_id !== messages[i-1].sender_id) {
-        const responseTime = new Date(messages[i-1].created_at).getTime() - 
-                           new Date(messages[i].created_at).getTime();
-        totalResponseTime += responseTime;
-        responseCount++;
-      }
-    }
-
-    const averageResponseTime = responseCount ? totalResponseTime / responseCount / 1000 : 0;
-
-    return {
-      totalMessages,
-      lastActive,
-      averageResponseTime
+    return () => {
+      supabase.removeChannel(channel);
     };
-  };
+  }, [supabase, fetchMessages]);
 
-  const toggleFavorite = async (userId: string) => {
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { id, email } = session.user;
+        setCurrentUser({ id, email });
+        fetchMessages();
+        setupRealtimeSubscription(id);
+      }
+    };
+
+    fetchCurrentUser();
+  }, [supabase, fetchMessages, setupRealtimeSubscription]);
+
+  const toggleFavorite = useCallback(async (userId: string) => {
     try {
+      if (!currentUser) return;
+      
       const isFavorite = users.find(u => u.id === userId)?.is_favorite;
 
       if (isFavorite) {
@@ -256,26 +224,29 @@ export default function MessagesPage() {
           });
       }
 
-      // Update local state
-      setUsers(users.map(user => 
-        user.id === userId 
-          ? { ...user, is_favorite: !isFavorite }
-          : user
-      ));
+      setUsers(prevUsers => 
+        prevUsers.map(user => 
+          user.id === userId 
+            ? { ...user, is_favorite: !isFavorite }
+            : user
+        )
+      );
     } catch (error) {
       console.error('Error toggling favorite:', error);
     }
-  };
+  }, [currentUser, users, supabase]);
 
   // Filter and sort users
   const filteredUsers = users
     .filter(user => {
-      const matchesFilter = 
-        filter === 'all' ? true :
-        filter === 'unread' ? (user.unread_count || 0) > 0 :
-        filter === 'favorites' ? user.is_favorite : true;
-
-      return matchesFilter;
+      switch (filter) {
+        case 'unread':
+          return (user.unread_count || 0) > 0;
+        case 'favorites':
+          return user.is_favorite;
+        default:
+          return true;
+      }
     })
     .sort((a, b) => {
       switch (sortBy) {

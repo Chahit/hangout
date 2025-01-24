@@ -1,12 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { motion } from 'framer-motion';
 import { DATING_QUESTIONS } from '../questions';
 import { useRouter } from 'next/navigation';
 import type { Database } from '@/lib/database.types';
 import { Loader2 } from 'lucide-react';
+
+interface DatingProfile {
+  id: string;
+  user_id: string;
+  answers: Record<string, string>;
+  has_completed_profile: boolean;
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -15,14 +22,13 @@ export default function ProfilePage() {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    checkProfile();
-  }, []);
-
-  const checkProfile = async () => {
+  const checkProfile = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return router.push('/auth');
+      if (!session) {
+        router.push('/auth');
+        return;
+      }
 
       const { data: profile, error } = await supabase
         .from('dating_profiles')
@@ -32,7 +38,7 @@ export default function ProfilePage() {
 
       if (error) throw error;
 
-      if (profile.has_completed_profile) {
+      if (profile?.has_completed_profile) {
         router.push('/dashboard/dating/matches');
       }
     } catch (error) {
@@ -40,9 +46,9 @@ export default function ProfilePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, router]);
 
-  const submitAnswer = async (answer: string) => {
+  const submitAnswer = useCallback(async (answer: string) => {
     const newAnswers = { ...answers, [currentQuestion]: answer };
     setAnswers(newAnswers);
 
@@ -51,12 +57,15 @@ export default function ProfilePage() {
     } else {
       await completeProfile(newAnswers);
     }
-  };
+  }, [currentQuestion, answers]);
 
-  const completeProfile = async (finalAnswers: Record<number, string>) => {
+  const completeProfile = useCallback(async (finalAnswers: Record<number, string>) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) {
+        router.push('/auth');
+        return;
+      }
 
       const { error } = await supabase
         .from('dating_profiles')
@@ -71,7 +80,11 @@ export default function ProfilePage() {
     } catch (error) {
       console.error('Error completing profile:', error);
     }
-  };
+  }, [supabase, router]);
+
+  useEffect(() => {
+    checkProfile();
+  }, [checkProfile]);
 
   if (loading) {
     return (

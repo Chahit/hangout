@@ -22,7 +22,7 @@ export function subscribeToChannel(channelName: string, callback: (message: Ably
   };
 }
 
-export function publishToChannel(channelName: string, eventName: string, data: any) {
+export function publishToChannel(channelName: string, eventName: string, data: unknown) {
   const channel = ably.channels.get(channelName);
   return channel.publish(eventName, data);
 }

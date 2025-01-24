@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Plus, Dumbbell, Code, Book, Music, Gamepad, Camera, Coffee, MessageSquare, X, Sparkles, Trash2, MessageCircle, Search, Clock, Settings, Users } from 'lucide-react';
+import { Plus, Dumbbell, Code, Book, Music, Gamepad, Camera, Coffee, MessageSquare, Trash2, MessageCircle, Search, Clock, Users, ArrowUpDown, Sparkles } from 'lucide-react';
 import { Database } from '../../../lib/database.types';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Link from 'next/link';
 import Modal from '@/components/shared/Modal';
 import { format } from 'date-fns';
@@ -111,33 +111,18 @@ export default function GroupsPage() {
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'members' | 'activity'>('activity');
-  const [user, setCurrentUser] = useState<any>(null);
+  const [user, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    fetchCurrentUser();
-  }, []);
-
-  useEffect(() => {
-    if (user) {
-      fetchGroups();
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (groups.length > 0) {
-      fetchGroupStats();
-    }
-  }, [groups]);
-
-  const fetchCurrentUser = async () => {
+  const fetchCurrentUser = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
-      setCurrentUser(session.user);
+      const { id, email } = session.user;
+      setCurrentUser({ id, email });
     }
-  };
+  }, [supabase]);
 
-  const fetchGroups = async () => {
+  const fetchGroups = useCallback(async () => {
     if (!user) return;
     
     setError('');
@@ -155,7 +140,6 @@ export default function GroupsPage() {
 
       if (membershipsError) throw membershipsError;
 
-      // Combine groups with membership roles
       const groupsWithRoles = groupsData.map((group) => ({
         ...group,
         role: membershipsData.find((m) => m.group_id === group.id)?.role || 'none',
@@ -167,9 +151,9 @@ export default function GroupsPage() {
       console.error('Error fetching groups:', error);
       setError('Failed to fetch groups');
     }
-  };
+  }, [user, supabase]);
 
-  const fetchGroupStats = async () => {
+  const fetchGroupStats = useCallback(async () => {
     const stats: GroupStats = {
       totalMembers: 0,
       activeMembers: 0,
@@ -179,7 +163,6 @@ export default function GroupsPage() {
     
     try {
       for (const group of groups) {
-        // Fetch total members
         const { count: totalMembers, error: membersError } = await supabase
           .from('group_members')
           .select('*', { count: 'exact' })
@@ -189,7 +172,6 @@ export default function GroupsPage() {
           stats.totalMembers += totalMembers || 0;
         }
 
-        // Fetch message stats
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -207,7 +189,6 @@ export default function GroupsPage() {
         stats.activeMembers += activeMembers || 0;
         stats.messageCount += messageCount || 0;
 
-        // Get last activity
         const { data: lastMessage } = await supabase
           .from('messages')
           .select('created_at')
@@ -223,7 +204,6 @@ export default function GroupsPage() {
       setStats(stats);
     } catch (error) {
       console.error('Error fetching group stats:', error);
-      // Set default stats instead of leaving them empty
       setStats({
         totalMembers: 0,
         activeMembers: 0,
@@ -231,7 +211,23 @@ export default function GroupsPage() {
         lastActivity: undefined
       });
     }
-  };
+  }, [groups, supabase]);
+
+  useEffect(() => {
+    fetchCurrentUser();
+  }, [fetchCurrentUser]);
+
+  useEffect(() => {
+    if (user) {
+      fetchGroups();
+    }
+  }, [user, fetchGroups]);
+
+  useEffect(() => {
+    if (groups.length > 0) {
+      fetchGroupStats();
+    }
+  }, [groups, fetchGroupStats]);
 
   // Filter and sort groups
   const filteredGroups = groups
@@ -247,14 +243,15 @@ export default function GroupsPage() {
         case 'members':
           return (b.member_count || 0) - (a.member_count || 0);
         case 'activity':
-          return new Date(stats.lastActivity || 0).getTime() - 
-                 new Date(stats.lastActivity || 0).getTime();
+          const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+          const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+          return bTime - aTime;
         default:
           return 0;
       }
     });
 
-  const handleCreateGroup = async (e: React.FormEvent) => {
+  const handleCreateGroup = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -263,10 +260,8 @@ export default function GroupsPage() {
       if (authError) throw authError;
       if (!session?.user) throw new Error('Not authenticated');
 
-      // Generate a unique code
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-      // Create group
       const { data: group, error: groupError } = await supabase
         .from('groups')
         .insert({
@@ -280,7 +275,6 @@ export default function GroupsPage() {
 
       if (groupError) throw groupError;
 
-      // Add creator as admin
       const { error: memberError } = await supabase
         .from('group_members')
         .insert({
@@ -294,14 +288,14 @@ export default function GroupsPage() {
       setShowCreateModal(false);
       setGroupName('');
       setGroupDescription('');
-      await fetchGroups(); // Refresh the groups list
-    } catch (error: any) {
-      console.error('Detailed error:', error);
-      setError(error?.message || 'Failed to create group. Please try again.');
+      await fetchGroups();
+    } catch (error) {
+      console.error('Error creating group:', error);
+      setError(error instanceof Error ? error.message : 'Failed to create group');
     }
-  };
+  }, [supabase, groupName, groupDescription, fetchGroups]);
 
-  const handleJoinGroup = async (e: React.FormEvent) => {
+  const handleJoinGroup = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -310,7 +304,6 @@ export default function GroupsPage() {
       if (authError) throw authError;
       if (!session?.user) throw new Error('Not authenticated');
 
-      // Check if group exists
       const { data: group, error: groupError } = await supabase
         .from('groups')
         .select('*')
@@ -321,7 +314,6 @@ export default function GroupsPage() {
         throw new Error('Invalid group code');
       }
 
-      // Add user to group
       const { error: memberError } = await supabase
         .from('group_members')
         .insert({
@@ -334,19 +326,18 @@ export default function GroupsPage() {
 
       setShowJoinModal(false);
       setGroupCode('');
-      await fetchGroups(); // Refresh the groups list
-    } catch (error: any) {
-      console.error('Error:', error);
-      setError(error?.message || 'Failed to join group');
+      await fetchGroups();
+    } catch (error) {
+      console.error('Error joining group:', error);
+      setError(error instanceof Error ? error.message : 'Failed to join group');
     }
-  };
+  }, [supabase, groupCode, fetchGroups]);
 
-  const handleDeleteGroup = async () => {
+  const handleDeleteGroup = useCallback(async () => {
     if (!selectedGroup) return;
     setError('');
 
     try {
-      // Delete group members first
       const { error: membersError } = await supabase
         .from('group_members')
         .delete()
@@ -354,7 +345,6 @@ export default function GroupsPage() {
 
       if (membersError) throw membersError;
 
-      // Delete the group
       const { error: groupError } = await supabase
         .from('groups')
         .delete()
@@ -364,12 +354,12 @@ export default function GroupsPage() {
 
       setShowDeleteModal(false);
       setSelectedGroup(null);
-      await fetchGroups(); // Refresh the groups list
-    } catch (error: any) {
+      await fetchGroups();
+    } catch (error) {
       console.error('Error deleting group:', error);
-      setError(error?.message || 'Failed to delete group');
+      setError(error instanceof Error ? error.message : 'Failed to delete group');
     }
-  };
+  }, [supabase, selectedGroup, fetchGroups]);
 
   return (
     <div className="min-h-screen w-full relative font-cabinet-grotesk">

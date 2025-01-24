@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Save, Loader2, User, Mail, GraduationCap, BookOpen, Heart, Sparkles } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2, User, Mail, GraduationCap, BookOpen, Heart } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface Profile {
   id: string;
@@ -121,11 +121,7 @@ export default function SettingsPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const supabase = createClientComponentClient();
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -161,9 +157,15 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
 
-  const updateProfile = async () => {
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  const updateProfile = useCallback(async () => {
+    if (!profile) return;
+    
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -171,7 +173,7 @@ export default function SettingsPage() {
       setSaving(true);
 
       // Handle avatar upload if present
-      let avatarUrl = profile?.avatar_url;
+      let avatarUrl = profile.avatar_url;
       if (selectedFile) {
         const fileExt = selectedFile.name.split('.').pop();
         const fileName = `${user.id}.${fileExt}`;
@@ -193,30 +195,29 @@ export default function SettingsPage() {
         .from('profiles')
         .upsert({
           id: user.id,
-          name: profile?.name,
-          email: profile?.email,
+          name: profile.name,
+          email: profile.email,
           avatar_url: avatarUrl,
-          batch: profile?.batch,
-          branch: profile?.branch,
-          interests: profile?.interests,
-          notification_preferences: profile?.notification_preferences,
-          privacy_settings: profile?.privacy_settings,
-          updated_at: new Date().toISOString()
+          batch: profile.batch,
+          branch: profile.branch,
+          interests: profile.interests,
+          notification_preferences: profile.notification_preferences,
+          privacy_settings: profile.privacy_settings
         });
 
       if (error) throw error;
 
-      setSelectedFile(null);
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
+      setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       console.error('Error updating profile:', error);
       setMessage({ type: 'error', text: 'Failed to update profile. Please try again.' });
     } finally {
       setSaving(false);
     }
-  };
+  }, [supabase, profile, selectedFile]);
 
-  const handleInterestChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInterestChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!profile) return;
     
     const interests = e.target.value
@@ -225,18 +226,18 @@ export default function SettingsPage() {
       .filter(interest => interest !== '');
     
     setProfile({ ...profile, interests });
-  };
+  }, [profile]);
 
-  const handleBranchChange = (branch: string) => {
+  const handleBranchChange = useCallback((branch: string) => {
     if (!profile) return;
     
     setProfile({
       ...profile,
       branch
     });
-  };
+  }, [profile]);
 
-  const handleNotificationPreferenceChange = (key: string, value: boolean) => {
+  const handleNotificationPreferenceChange = useCallback((key: string, value: boolean) => {
     if (!profile) return;
     
     setProfile({
@@ -246,9 +247,9 @@ export default function SettingsPage() {
         [key]: value
       }
     });
-  };
+  }, [profile]);
 
-  const handlePrivacySettingChange = (key: string, value: boolean) => {
+  const handlePrivacySettingChange = useCallback((key: string, value: boolean) => {
     if (!profile) return;
     
     setProfile({
@@ -258,7 +259,7 @@ export default function SettingsPage() {
         [key]: value
       }
     });
-  };
+  }, [profile]);
 
   if (loading) {
     return (
@@ -411,7 +412,7 @@ export default function SettingsPage() {
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" />
+                <Heart className="w-4 h-4" />
                 Save Changes
               </>
             )}

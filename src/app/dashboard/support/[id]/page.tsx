@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { MessageCircle, Tag, ThumbsUp, User, Check, X } from 'lucide-react';
+import { Tag, User, Check } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 
@@ -43,21 +43,17 @@ export default function SupportPostPage() {
     content: '',
     is_anonymous: false
   });
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
 
-  useEffect(() => {
-    fetchPost();
-    fetchCurrentUser();
-  }, [id]);
-
-  const fetchCurrentUser = async () => {
+  const fetchCurrentUser = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
-      setCurrentUser(session.user);
+      const { id, email } = session.user;
+      setCurrentUser({ id, email });
     }
-  };
+  }, [supabase]);
 
-  const fetchPost = async () => {
+  const fetchPost = useCallback(async () => {
     try {
       const { data: post, error } = await supabase
         .from('support_posts')
@@ -84,9 +80,14 @@ export default function SupportPostPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, id, router]);
 
-  const handleSubmitResponse = async (e: React.FormEvent) => {
+  useEffect(() => {
+    fetchPost();
+    fetchCurrentUser();
+  }, [fetchPost, fetchCurrentUser]);
+
+  const handleSubmitResponse = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (!currentUser) return;
@@ -108,9 +109,9 @@ export default function SupportPostPage() {
     } catch (error) {
       console.error('Error creating response:', error);
     }
-  };
+  }, [supabase, currentUser, newResponse, id, fetchPost]);
 
-  const handleMarkResolved = async () => {
+  const handleMarkResolved = useCallback(async () => {
     try {
       if (!currentUser || post?.created_by !== currentUser.id) return;
 
@@ -124,9 +125,9 @@ export default function SupportPostPage() {
     } catch (error) {
       console.error('Error marking post as resolved:', error);
     }
-  };
+  }, [supabase, currentUser, post, id, fetchPost]);
 
-  const handleAcceptResponse = async (responseId: string) => {
+  const handleAcceptResponse = useCallback(async (responseId: string) => {
     try {
       if (!currentUser || post?.created_by !== currentUser.id) return;
 
@@ -140,7 +141,7 @@ export default function SupportPostPage() {
     } catch (error) {
       console.error('Error accepting response:', error);
     }
-  };
+  }, [supabase, currentUser, post, id, fetchPost]);
 
   if (loading) {
     return (
@@ -293,4 +294,4 @@ export default function SupportPostPage() {
       )}
     </div>
   );
-} 
+}

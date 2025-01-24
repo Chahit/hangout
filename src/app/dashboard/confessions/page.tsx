@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Heart, Send, X, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -96,7 +96,7 @@ export default function ConfessionsPage() {
   const [newConfession, setNewConfession] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
-  const [message, setMessage] = useState<Message | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showPostModal, setShowPostModal] = useState(false);
   const [commenting, setCommenting] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
@@ -104,14 +104,7 @@ export default function ConfessionsPage() {
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const supabase = createClientComponentClient<Database>();
 
-  useEffect(() => {
-    const setup = async () => {
-      await Promise.all([fetchUser(), fetchConfessions()]);
-    };
-    setup();
-  }, []);
-
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (currentUser) {
@@ -131,10 +124,11 @@ export default function ConfessionsPage() {
     } catch (error) {
       console.error('Error fetching user:', error);
     }
-  };
+  }, [supabase]);
 
-  const fetchConfessions = async () => {
+  const fetchConfessions = useCallback(async () => {
     try {
+      setLoading(true);
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) return;
 
@@ -172,15 +166,21 @@ export default function ConfessionsPage() {
       }
     } catch (error) {
       console.error('Error fetching confessions:', error);
-      setMessage({ type: 'error', text: 'Failed to load confessions' });
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [supabase]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const fileType = file.type.startsWith('image/') ? 'image' : 'video';
+    // Only allow image files
+    if (!file.type.startsWith('image/')) {
+      console.error('Only image files are supported');
+      return;
+    }
+
     setSelectedFile(file);
 
     const reader = new FileReader();
@@ -364,6 +364,26 @@ export default function ConfessionsPage() {
         );
     }
   };
+
+  useEffect(() => {
+    const setup = async () => {
+      await Promise.all([fetchUser(), fetchConfessions()]);
+    };
+    setup();
+  }, [fetchUser, fetchConfessions]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen w-full relative">
+        <FloatingShapes />
+        <div className="p-4 md:p-6 max-w-4xl mx-auto">
+          <div className="flex items-center justify-center h-screen">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return (

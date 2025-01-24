@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -12,6 +11,8 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const OPENAI_API_URL = "https://api.openai.com/v1/moderations";
 
+type ModerationAction = "flagged" | "hidden" | "deleted";
+
 type ModerationResponse = {
   results: [{
     categories: Record<string, boolean>;
@@ -23,7 +24,12 @@ export async function moderateContent(
   content: string,
   contentType: string,
   contentId: string
-) {
+): Promise<{
+  isAccepted: boolean;
+  action: ModerationAction;
+  score: number;
+  categories: string[];
+}> {
   try {
     const response = await fetch(OPENAI_API_URL, {
       method: "POST",
@@ -47,7 +53,7 @@ export async function moderateContent(
       .map(([category]) => category);
 
     // Determine action based on moderation score
-    let action: "flagged" | "hidden" | "deleted" = "flagged";
+    let action: ModerationAction = "flagged";
     if (moderationScore > 0.8) {
       action = "deleted";
     } else if (moderationScore > 0.5) {
@@ -77,9 +83,9 @@ export async function moderateContent(
     // Default to accepting content if moderation fails
     return {
       isAccepted: true,
-      action: "flagged" as const,
+      action: "flagged",
       score: 0,
       categories: [],
     };
   }
-} 
+}
