@@ -6,7 +6,6 @@ import { Plus, ArrowUpDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
-import Modal from '@/components/shared/Modal';
 
 interface Meme {
   id: string;
@@ -94,7 +93,6 @@ const FloatingShapes = () => (
 
 export default function MemesPage() {
   const [memes, setMemes] = useState<MemeWithLikes[]>([]);
-  const [showPostModal, setShowPostModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
@@ -221,7 +219,6 @@ export default function MemesPage() {
               variants={buttonVariants}
               whileHover="hover"
               whileTap="tap"
-              onClick={() => setShowPostModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 text-purple-400 rounded-lg hover:bg-purple-500/30 transition-colors"
             >
               <Plus className="w-4 h-4" />

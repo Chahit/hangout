@@ -3,22 +3,18 @@
 import { useEffect, useState, useCallback } from "react";
 import { 
   Calendar, TrendingUp,
-  Users, MessageSquare, Bell, MessageCircle, Heart,
-  Share2, PartyPopper
+  MessageSquare, Users, Heart,
+  Bell
 } from "lucide-react";
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import Link from 'next/link';
-import Image from 'next/image';
-import { format } from 'date-fns';
-import { motion } from 'framer-motion';
-import ActivityTrends from './components/ActivityTrends';
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { motion } from "framer-motion";
+import Link from "next/link";
 
 // Animation variants
 const cardVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
-  hover: { scale: 1.02 },
-  tap: { scale: 0.98 }
+  hover: { scale: 1.02, transition: { duration: 0.2 } }
 };
 
 // Floating background shapes component
@@ -68,56 +64,6 @@ interface DashboardStats {
   memeInteractions: number;
 }
 
-interface Activity {
-  id: string;
-  type: 'community' | 'event' | 'message' | 'dating' | 'confession' | 'meme' | 'support';
-  title: string;
-  description: string;
-  timestamp: string;
-  user?: {
-    name: string;
-    avatar_url: string;
-  };
-  link?: string;
-}
-
-interface Event {
-  id: string;
-  title: string;
-  description: string;
-  start_time: string;
-  end_time: string;
-  location: string;
-  is_public: boolean;
-  is_approved: boolean;
-  max_participants: number;
-  participants: {
-    user: {
-      id: string;
-      name: string;
-    };
-    status: string;
-  }[];
-  group?: {
-    id: string;
-    name: string;
-  };
-}
-
-interface Group {
-  id: string;
-  name: string;
-  description: string;
-  members: {
-    user: {
-      id: string;
-      name: string;
-    };
-    role: 'admin' | 'member';
-  }[];
-  events: Event[];
-}
-
 export default function DashboardPage() {
   const supabase = createClientComponentClient();
   const [stats, setStats] = useState<DashboardStats>({
@@ -134,10 +80,8 @@ export default function DashboardPage() {
     supportResponses: 0,
     memeInteractions: 0
   });
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
-  const [suggestedGroups, setSuggestedGroups] = useState<Group[]>([]);
-  const [notificationCount, setNotificationCount] = useState(0);
+
+  const [loading, setLoading] = useState(true);
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -151,7 +95,7 @@ export default function DashboardPage() {
         .eq('is_read', false)
         .single();
 
-      setNotificationCount(count || 0);
+      setStats(prev => ({ ...prev, notifications: count || 0 }));
     } catch (error) {
       console.error('Error fetching notifications:', error);
     }
@@ -206,56 +150,7 @@ export default function DashboardPage() {
         datingMatches: datingMatches || 0
       }));
 
-      // Fetch activities
-      const { data: activitiesData } = await supabase
-        .from('activities')
-        .select(`
-          *,
-          user:profiles(name, avatar_url)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (activitiesData) {
-        setActivities(activitiesData);
-      }
-
-      // Fetch upcoming events
-      const { data: eventsData } = await supabase
-        .from('events')
-        .select(`
-          *,
-          group:groups(id, name),
-          participants:event_participants(
-            user:profiles(id, name),
-            status
-          )
-        `)
-        .gte('start_time', new Date().toISOString())
-        .eq('is_approved', true)
-        .order('start_time', { ascending: true })
-        .limit(3);
-
-      if (eventsData) {
-        setUpcomingEvents(eventsData);
-      }
-
-      // Fetch suggested groups
-      const { data: groupsData } = await supabase
-        .from('groups')
-        .select(`
-          *,
-          members:group_members(
-            user:profiles(id, name),
-            role
-          ),
-          events(*)
-        `)
-        .limit(3);
-
-      if (groupsData) {
-        setSuggestedGroups(groupsData);
-      }
+      setLoading(false);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     }
@@ -282,6 +177,14 @@ export default function DashboardPage() {
     };
   }, [supabase, fetchDashboardData, fetchNotifications]);
 
+  if (loading) {
+    return (
+      <div className="min-h-screen w-full relative font-cabinet-grotesk flex justify-center items-center">
+        <div className="text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen w-full relative font-cabinet-grotesk">
       {/* Floating background shapes for visual interest */}
@@ -295,7 +198,7 @@ export default function DashboardPage() {
               Welcome Back! 
             </h1>
             <p className="text-gray-400 mt-1">
-              Here's what's happening in your college community
+              Here&apos;s what&apos;s happening in your college community
             </p>
           </div>
         </div>
@@ -395,7 +298,7 @@ export default function DashboardPage() {
           >
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 bg-indigo-500/20 rounded-lg">
-                <Share2 className="w-5 h-5 text-indigo-400" />
+                <Heart className="w-5 h-5 text-indigo-400" />
               </div>
               <div>
                 <h3 className="font-medium">Connections</h3>
@@ -415,7 +318,7 @@ export default function DashboardPage() {
           >
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 bg-cyan-500/20 rounded-lg">
-                <MessageCircle className="w-5 h-5 text-cyan-400" />
+                <MessageSquare className="w-5 h-5 text-cyan-400" />
               </div>
               <div>
                 <h3 className="font-medium">Active Chats</h3>
@@ -435,7 +338,7 @@ export default function DashboardPage() {
           >
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 bg-amber-500/20 rounded-lg">
-                <PartyPopper className="w-5 h-5 text-amber-400" />
+                <TrendingUp className="w-5 h-5 text-amber-400" />
               </div>
               <div>
                 <h3 className="font-medium">Event Participation</h3>
@@ -455,7 +358,7 @@ export default function DashboardPage() {
           >
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 bg-rose-500/20 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-rose-400" />
+                <Users className="w-5 h-5 text-rose-400" />
               </div>
               <div>
                 <h3 className="font-medium">Group Activity</h3>
@@ -464,11 +367,6 @@ export default function DashboardPage() {
             </div>
             <p className="text-sm text-gray-400">Posts in last 30 days</p>
           </motion.div>
-        </div>
-
-        {/* Activity Trends Section */}
-        <div className="mb-8">
-          <ActivityTrends />
         </div>
 
         {/* Quick Actions Section */}
@@ -556,49 +454,4 @@ export default function DashboardPage() {
       </div>
     </div>
   );
-} 
-
-// Add notification badge component
-const NotificationBadge = ({ count }: { count: number }) => (
-  count > 0 ? (
-    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-      {count > 9 ? '9+' : count}
-    </span>
-  ) : null
-);
-
-// Add activity card component
-const ActivityCard = ({ activity }: { activity: Activity }) => (
-  <motion.div
-    variants={cardVariants}
-    initial="hidden"
-    animate="visible"
-    whileHover="hover"
-    className="bg-white/5 backdrop-blur-sm rounded-xl p-4 relative"
-  >
-    <div className="flex items-start gap-3">
-      {activity.user?.avatar_url && (
-        <Image
-          src={activity.user.avatar_url}
-          alt={activity.user.name}
-          width={40}
-          height={40}
-          className="rounded-full"
-        />
-      )}
-      <div className="flex-1">
-        <h3 className="font-medium text-sm">{activity.title}</h3>
-        <p className="text-sm text-gray-400">{activity.description}</p>
-        <span className="text-xs text-gray-500">
-          {format(new Date(activity.timestamp), 'MMM d, h:mm a')}
-        </span>
-      </div>
-    </div>
-    {activity.link && (
-      <Link
-        href={activity.link}
-        className="absolute inset-0 rounded-xl hover:bg-white/5 transition-colors"
-      />
-    )}
-  </motion.div>
-);
+}

@@ -41,6 +41,31 @@ export default function ChatPage() {
   const [matchInfo, setMatchInfo] = useState<MatchInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchMessages = useCallback(async () => {
+    try {
+      const { data: messages, error: messagesError } = await supabase
+        .from('dating_messages')
+        .select(`
+          *,
+          sender:sender_id(email)
+        `)
+        .eq('match_id', matchId)
+        .order('created_at', { ascending: true });
+
+      if (messagesError) throw messagesError;
+
+      setMessages(messages.map(msg => ({
+        ...msg,
+        sender_email: msg.sender.email
+      })));
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      setError('Failed to load messages. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase, matchId]);
+
   const fetchMatchInfo = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -79,32 +104,7 @@ export default function ChatPage() {
       setError('Failed to load chat. Please try again.');
       setLoading(false);
     }
-  }, [supabase, matchId]);
-
-  const fetchMessages = useCallback(async () => {
-    try {
-      const { data: messages, error: messagesError } = await supabase
-        .from('dating_messages')
-        .select(`
-          *,
-          sender:sender_id(email)
-        `)
-        .eq('match_id', matchId)
-        .order('created_at', { ascending: true });
-
-      if (messagesError) throw messagesError;
-
-      setMessages(messages.map(msg => ({
-        ...msg,
-        sender_email: msg.sender.email
-      })));
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      setError('Failed to load messages. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [supabase, matchId]);
+  }, [supabase, matchId, fetchMessages]);
 
   const handleNewMessage = useCallback(() => {
     const messagesChannel = supabase.channel(`match:${matchId}`)
@@ -125,23 +125,25 @@ export default function ChatPage() {
   }, [supabase, matchId]);
 
   useEffect(() => {
-    fetchMessages();
     const channel = supabase
       .channel(`match_${matchId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'dating_messages',
-        filter: `match_id=eq.${matchId}`,
-      }, () => {
-        fetchMessages();
+        filter: `match_id=eq.${matchId}`
+      }, (payload) => {
+        const newMessage = payload.new as Message;
+        setMessages(prevMessages => [...prevMessages, newMessage]);
       })
       .subscribe();
 
+    fetchMessages();
+
     return () => {
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
     };
-  }, [matchId, supabase, fetchMessages]);
+  }, [supabase, matchId, fetchMessages]);
 
   useEffect(() => {
     const setup = async () => {

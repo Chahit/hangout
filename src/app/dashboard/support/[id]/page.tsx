@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Tag, User, Check } from 'lucide-react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
 
 type SupportPost = {
@@ -35,7 +35,6 @@ type SupportPost = {
 
 export default function SupportPostPage() {
   const supabase = createClientComponentClient();
-  const router = useRouter();
   const { id } = useParams();
   const [post, setPost] = useState<SupportPost | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,7 +78,7 @@ export default function SupportPostPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, id]);
+  }, [supabase, id, setPost, setLoading]);
 
   useEffect(() => {
     fetchPost();

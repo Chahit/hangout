@@ -8,7 +8,6 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import Modal from '@/components/shared/Modal';
 import { format } from 'date-fns';
-import { useRouter } from 'next/navigation';
 
 // Animation variants
 const cardVariants = {
@@ -112,7 +111,6 @@ export default function GroupsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'members' | 'activity'>('activity');
   const [user, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
-  const router = useRouter();
 
   const fetchCurrentUser = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();

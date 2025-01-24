@@ -41,17 +41,6 @@ export default function ProfilePage() {
     }
   }, [supabase, router]);
 
-  const submitAnswer = useCallback(async (answer: string) => {
-    const newAnswers = { ...answers, [currentQuestion]: answer };
-    setAnswers(newAnswers);
-
-    if (currentQuestion < DATING_QUESTIONS.length - 1) {
-      setCurrentQuestion(prev => prev + 1);
-    } else {
-      await completeProfile(newAnswers);
-    }
-  }, [currentQuestion, answers]);
-
   const completeProfile = useCallback(async (finalAnswers: Record<number, string>) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -74,6 +63,17 @@ export default function ProfilePage() {
       console.error('Error completing profile:', error);
     }
   }, [supabase, router]);
+
+  const submitAnswer = useCallback(async (answer: string) => {
+    const newAnswers = { ...answers, [currentQuestion]: answer };
+    setAnswers(newAnswers);
+
+    if (currentQuestion < DATING_QUESTIONS.length - 1) {
+      setCurrentQuestion(prev => prev + 1);
+    } else {
+      await completeProfile(newAnswers);
+    }
+  }, [currentQuestion, answers, completeProfile]);
 
   useEffect(() => {
     checkProfile();

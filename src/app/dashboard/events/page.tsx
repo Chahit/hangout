@@ -239,14 +239,13 @@ export default function EventsPage() {
       if (!session?.user) return;
 
       // Upload media if present
-      let mediaUrl;
       if (selectedFile) {
         const fileExt = selectedFile.name.split('.').pop();
         const fileName = `${session.user.id}_${Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from('event-media')
-          .upload(fileName, selectedFile);
+          .upload(fileName, selectedFile, { upsert: true });
 
         if (uploadError) throw uploadError;
 
@@ -254,40 +253,70 @@ export default function EventsPage() {
           .from('event-media')
           .getPublicUrl(fileName);
 
-        mediaUrl = publicUrl;
+        const { data: event, error } = await supabase
+          .from('events')
+          .insert({
+            ...eventData,
+            user_id: session.user.id,
+            created_by: session.user.id,
+            group_id: eventData.group_id || null,
+            media_url: publicUrl,
+            is_public: true,
+            is_approved: true,
+            max_participants: 50,
+            participants: []
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Add creator as first participant
+        const { error: participantError } = await supabase
+          .from('event_participants')
+          .insert({
+            event_id: event.id,
+            user_id: session.user.id,
+            status: 'accepted'
+          });
+
+        if (participantError) throw participantError;
+
+        setEvents(prev => [...prev, event]);
+        setShowCreateModal(false);
+        setSelectedFile(null);
+      } else {
+        const { data: event, error } = await supabase
+          .from('events')
+          .insert({
+            ...eventData,
+            user_id: session.user.id,
+            created_by: session.user.id,
+            group_id: eventData.group_id || null,
+            is_public: true,
+            is_approved: true,
+            max_participants: 50,
+            participants: []
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Add creator as first participant
+        const { error: participantError } = await supabase
+          .from('event_participants')
+          .insert({
+            event_id: event.id,
+            user_id: session.user.id,
+            status: 'accepted'
+          });
+
+        if (participantError) throw participantError;
+
+        setEvents(prev => [...prev, event]);
+        setShowCreateModal(false);
       }
-
-      const { data: event, error } = await supabase
-        .from('events')
-        .insert({
-          ...eventData,
-          user_id: session.user.id,
-          created_by: session.user.id,
-          group_id: eventData.group_id || null,
-          is_public: true,
-          is_approved: true,
-          max_participants: 50,
-          participants: []
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Add creator as first participant
-      const { error: participantError } = await supabase
-        .from('event_participants')
-        .insert({
-          event_id: event.id,
-          user_id: session.user.id,
-          status: 'accepted'
-        });
-
-      if (participantError) throw participantError;
-
-      setEvents(prev => [...prev, event]);
-      setShowCreateModal(false);
-      setSelectedFile(null);
     } catch (error) {
       console.error('Error creating event:', error);
     }
@@ -597,7 +626,10 @@ export default function EventsPage() {
                 </button>
               </div>
 
-              <form onSubmit={(e) => createEvent(newEvent)} className="space-y-3">
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                createEvent(newEvent);
+              }} className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium mb-1">Title</label>
                   <input

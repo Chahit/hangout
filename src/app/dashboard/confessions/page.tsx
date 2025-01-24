@@ -36,14 +36,11 @@ interface Comment {
   user_id: string;
   user_name: string;
   confession_id: string;
+  profiles?: {
+    name: string;
+  };
 }
 
-interface Message {
-  type: 'success' | 'error';
-  text: string;
-}
-
-// Add type for sorting options
 type SortOption = 'newest' | 'oldest' | 'mostLiked';
 
 // Animation variants
@@ -156,10 +153,10 @@ export default function ConfessionsPage() {
           user_name: confession.profiles?.name || 'Anonymous',
           has_liked: confession.likes?.some((like: { user_id: string }) => like.user_id === currentUser.id) || false,
           likes_count: confession.likes?.length || 0,
-          comments: confession.comments?.map((comment: any) => ({
+          comments: (confession.comments || []).map((comment: Comment) => ({
             ...comment,
             user_name: comment.profiles?.name || 'Anonymous'
-          })) || []
+          }))
         }));
 
         setConfessions(formattedConfessions);
