@@ -29,4 +29,4 @@ export function publishToChannel(channelName: string, eventName: string, data: a
 
 export function getAblyChannel(channelName: string) {
   return ably.channels.get(channelName);
-} 
+}

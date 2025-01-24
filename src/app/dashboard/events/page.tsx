@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Calendar, Clock, MapPin, Plus, Users, X, Sparkles, PartyPopper, ArrowRight, Loader2 } from 'lucide-react';
+import { Plus, X, ArrowRight, Calendar, Clock, MapPin, Users, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -399,7 +399,7 @@ export default function EventsPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-clash-display font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-purple-600 text-transparent bg-clip-text">
-              Campus Events ✨
+              Campus Events 
             </h1>
             <p className="text-sm md:text-base text-gray-400 mt-1">
               {isAdmin ? 'Manage and approve campus events' : 'Discover exciting events happening around campus'}
@@ -584,7 +584,7 @@ export default function EventsPage() {
               transition={{ duration: 2, repeat: Infinity }}
               className="inline-block"
             >
-              <PartyPopper className="w-12 h-12 text-purple-500 mx-auto mb-4" />
+              <ArrowRight className="w-12 h-12 text-purple-500 mx-auto mb-4" />
             </motion.div>
             <h3 className="text-lg md:text-xl font-medium mb-2">
               {isAdmin && activeTab === 'pending'
@@ -720,8 +720,7 @@ export default function EventsPage() {
                   type="submit"
                   className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition-all text-sm flex items-center justify-center gap-2"
                 >
-                  <Sparkles className="w-4 h-4" />
-                  {isAdmin ? 'Create Event' : 'Submit for Approval'}
+                  Create Event
                 </motion.button>
               </form>
             </div>

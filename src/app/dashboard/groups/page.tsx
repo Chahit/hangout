@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Plus, Users, Dumbbell, Code, Book, Music, Gamepad, Camera, Coffee, MessageSquare, X, Sparkles, Trash2, MessageCircle, Search, Clock, Settings } from 'lucide-react';
+import { Plus, Dumbbell, Code, Book, Music, Gamepad, Camera, Coffee, MessageSquare, X, Sparkles, Trash2, MessageCircle, Search, Clock, Settings, Users } from 'lucide-react';
 import { Database } from '../../../lib/database.types';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -101,7 +101,6 @@ export default function GroupsPage() {
   const [groupCode, setGroupCode] = useState('');
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [groups, setGroups] = useState<Group[]>([]);
   const [stats, setStats] = useState<GroupStats>({
@@ -141,7 +140,6 @@ export default function GroupsPage() {
   const fetchGroups = async () => {
     if (!user) return;
     
-    setLoading(true);
     setError('');
     try {
       const { data: groupsData, error: groupsError } = await supabase
@@ -168,8 +166,6 @@ export default function GroupsPage() {
     } catch (error) {
       console.error('Error fetching groups:', error);
       setError('Failed to fetch groups');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -260,7 +256,6 @@ export default function GroupsPage() {
 
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
     try {
@@ -303,14 +298,11 @@ export default function GroupsPage() {
     } catch (error: any) {
       console.error('Detailed error:', error);
       setError(error?.message || 'Failed to create group. Please try again.');
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleJoinGroup = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
     try {
@@ -346,14 +338,11 @@ export default function GroupsPage() {
     } catch (error: any) {
       console.error('Error:', error);
       setError(error?.message || 'Failed to join group');
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleDeleteGroup = async () => {
     if (!selectedGroup) return;
-    setLoading(true);
     setError('');
 
     try {
@@ -379,8 +368,6 @@ export default function GroupsPage() {
     } catch (error: any) {
       console.error('Error deleting group:', error);
       setError(error?.message || 'Failed to delete group');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -535,10 +522,9 @@ export default function GroupsPage() {
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-50"
+                className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
               >
-                {loading ? 'Joining...' : 'Join Group'}
+                Join Group
               </button>
             </form>
           </div>
@@ -575,10 +561,9 @@ export default function GroupsPage() {
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-50"
+                className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
               >
-                {loading ? 'Creating...' : 'Create Group'}
+                Create Group
               </button>
             </form>
           </div>
@@ -604,10 +589,9 @@ export default function GroupsPage() {
               </button>
               <button
                 onClick={() => handleDeleteGroup()}
-                disabled={loading}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
               >
-                {loading ? 'Deleting...' : 'Delete'}
+                Delete
               </button>
             </div>
           </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useParams } from 'next/navigation';
-import { Send, Smile, ArrowLeft, Loader2 } from 'lucide-react';
+import { Send, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import type { Database } from '@/lib/database.types';
 
@@ -299,4 +299,4 @@ export default function ChatPage() {
       </form>
     </div>
   );
-} 
+}

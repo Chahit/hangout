@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { calculateCompatibilityScore } from '../questions';
-import { Heart, X, MessageCircle, Loader2, UserPlus, Check } from 'lucide-react';
+import { Heart, UserPlus, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import type { Database } from '@/lib/database.types';
 import { motion } from 'framer-motion';

@@ -1,21 +1,17 @@
 import { useState, useRef } from "react";
 import { Mic, Square, Send } from "lucide-react";
-import { useUploadThing } from "@/lib/uploadthing";
 import { supabase } from "@/lib/supabase";
 
-type VoiceRecorderProps = {
-  groupId?: string;
-  receiverId?: string;
-  onSend: (audioUrl: string, duration: number) => void;
-};
+interface VoiceRecorderProps {
+  onRecordingComplete: (audioBlob: Blob) => void;
+}
 
-export function VoiceRecorder({ groupId, receiverId, onSend }: VoiceRecorderProps) {
+export function VoiceRecorder({ onRecordingComplete }: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef<number>(0);
-  const { startUpload } = useUploadThing("messageAttachment");
 
   const startRecording = async () => {
     try {
@@ -53,16 +49,7 @@ export function VoiceRecorder({ groupId, receiverId, onSend }: VoiceRecorderProp
     if (!audioBlob) return;
 
     try {
-      const response = await startUpload([
-        new File([audioBlob], "voice-message.webm", {
-          type: "audio/webm",
-        }),
-      ]);
-
-      if (!response?.[0]) throw new Error("Failed to upload audio");
-
-      const duration = Math.round((Date.now() - startTimeRef.current) / 1000);
-      onSend(response[0].url, duration);
+      onRecordingComplete(audioBlob);
 
       // Reset state
       setAudioBlob(null);
@@ -102,4 +89,4 @@ export function VoiceRecorder({ groupId, receiverId, onSend }: VoiceRecorderProp
       )}
     </div>
   );
-} 
+}

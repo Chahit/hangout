@@ -2,12 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { 
-  Share2, Users, Calendar, MessageSquare, 
-  Plus, HelpCircle, TrendingUp, Coffee,
+  Share2, Calendar, Plus, HelpCircle, TrendingUp, Coffee,
   ShoppingBag, Briefcase, Search, MapPin,
-  Sparkles, Clock, ArrowRight, Heart,
-  Send, Image as ImageIcon, Bell, MessageCircle,
-  PartyPopper
+  Sparkles, Clock, ArrowRight, Send, ImageIcon, PartyPopper,
+  Users, MessageSquare, Bell, MessageCircle, Heart
 } from "lucide-react";
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
@@ -144,7 +142,6 @@ export default function DashboardPage() {
   const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
   const [suggestedGroups, setSuggestedGroups] = useState<Group[]>([]);
   const [quickPost, setQuickPost] = useState('');
-  const [loading, setLoading] = useState(true);
   const [notificationCount, setNotificationCount] = useState(0);
   const supabase = createClientComponentClient();
 
@@ -282,8 +279,6 @@ export default function DashboardPage() {
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -341,32 +336,6 @@ export default function DashboardPage() {
       console.error('Error creating post:', error);
     }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen w-full relative font-cabinet-grotesk">
-        <FloatingShapes />
-        <div className="p-6 max-w-7xl mx-auto">
-          <div className="animate-pulse space-y-6">
-            <div className="h-24 bg-white/5 rounded-xl overflow-hidden">
-              <div className="w-full h-full relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-500/10 to-transparent animate-shimmer" />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-32 bg-white/5 rounded-xl overflow-hidden">
-                  <div className="w-full h-full relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-500/10 to-transparent animate-shimmer" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen w-full relative font-cabinet-grotesk">

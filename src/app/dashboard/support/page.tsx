@@ -11,9 +11,7 @@ import {
   Search,
   X,
   Sparkles,
-  ArrowRight,
-  Clock,
-  MessageSquare
+  ArrowRight
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
@@ -395,12 +393,17 @@ export default function SupportPage() {
                   )}
                 </div>
                 {post.created_by === user?.id && (
-                  <button
-                    onClick={() => handleDeletePost(post.id)}
-                    className="text-red-400 hover:text-red-300 transition-colors"
+                  <motion.button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeletePost(post.id);
+                    }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    className="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-500/10 transition-all"
                   >
                     <X className="w-4 h-4" />
-                  </button>
+                  </motion.button>
                 )}
               </div>
 

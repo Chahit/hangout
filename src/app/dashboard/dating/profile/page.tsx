@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { motion } from 'framer-motion';
 import { DATING_QUESTIONS } from '../questions';
-import { Loader2, ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { Database } from '@/lib/database.types';
+import { Loader2 } from 'lucide-react';
 
 export default function ProfilePage() {
   const router = useRouter();

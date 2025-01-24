@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Heart, MessageCircle, Share, MoreVertical, Plus, X, Trash2, ArrowUpDown, MessageSquare, Send, Image as ImageIcon } from 'lucide-react';
+import { Heart, Send, X, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Database } from '@/lib/database.types';
 import { format } from 'date-fns';
@@ -400,7 +400,7 @@ export default function ConfessionsPage() {
               onClick={() => setShowPostModal(true)}
               className="flex-1 sm:flex-none px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition-all text-sm md:text-base flex items-center justify-center gap-2"
             >
-              <Plus className="w-4 h-4" />
+              <Send className="w-4 h-4" />
               Share Confession
             </motion.button>
             
@@ -411,7 +411,7 @@ export default function ConfessionsPage() {
               onClick={() => setSortBy(sortBy === 'newest' ? 'mostLiked' : 'newest')}
               className="flex-1 sm:flex-none px-4 py-2 bg-white/5 rounded-xl hover:bg-white/10 transition-all text-sm md:text-base flex items-center justify-center gap-2"
             >
-              <ArrowUpDown className="w-4 h-4" />
+              <Heart className="w-4 h-4" />
               {sortBy === 'newest' ? 'Most Liked' : 'Newest'}
             </motion.button>
           </div>
@@ -453,7 +453,7 @@ export default function ConfessionsPage() {
                     onClick={() => setDeleteConfirmation(confession.id)}
                     className="text-red-500 hover:text-red-400 p-2 rounded-lg hover:bg-red-500/10 transition-all"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <X className="w-4 h-4" />
                   </motion.button>
                 )}
               </div>
@@ -500,7 +500,7 @@ export default function ConfessionsPage() {
                   onClick={() => setCommenting(commenting === confession.id ? null : confession.id)}
                   className="flex items-center gap-2 text-sm text-gray-400 hover:text-purple-500 transition-colors"
                 >
-                  <MessageSquare className="w-4 h-4" />
+                  <Image src="/icons/comment.svg" alt="Comment" width={20} height={20} />
                   {confession.comments.length}
                 </motion.button>
 
@@ -510,7 +510,7 @@ export default function ConfessionsPage() {
                   whileTap="tap"
                   className="flex items-center gap-2 text-sm text-gray-400 hover:text-blue-500 transition-colors"
                 >
-                  <Share className="w-4 h-4" />
+                  <Image src="/icons/share.svg" alt="Share" width={20} height={20} />
                   Share
                 </motion.button>
               </div>
@@ -606,10 +606,7 @@ export default function ConfessionsPage() {
                       className="rounded-lg max-h-[300px] object-cover"
                     />
                     <button
-                      onClick={() => {
-                        setSelectedFile(null);
-                        setMediaPreview(null);
-                      }}
+                      onClick={() => setMediaPreview('')}
                       className="absolute top-2 right-2 p-1 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
                     >
                       <X className="w-4 h-4 text-white" />
@@ -626,7 +623,7 @@ export default function ConfessionsPage() {
                       className="hidden"
                     />
                     <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 rounded-xl hover:bg-white/10 transition-all cursor-pointer text-sm">
-                      <ImageIcon className="w-4 h-4" />
+                      <Image src="/icons/image.svg" alt="Image" width={20} height={20} />
                       Add Media
                     </div>
                   </label>

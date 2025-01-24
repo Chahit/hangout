@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Search, MessageSquare, User, Clock, Sparkles, Star, Filter, ArrowUp, Circle } from 'lucide-react';
+import { MessageSquare, User, Clock, Sparkles, Star, Filter, Circle } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -88,12 +88,10 @@ const FloatingShapes = () => (
 export default function MessagesPage() {
   const supabase = createClientComponentClient();
   const [users, setUsers] = useState<User[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [chatStats, setChatStats] = useState<{[key: string]: ChatStats}>({});
   const [filter, setFilter] = useState<'all' | 'unread' | 'favorites'>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'name' | 'unread'>('recent');
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchCurrentUser = async () => {
@@ -202,34 +200,6 @@ export default function MessagesPage() {
       setUsers(Array.from(uniqueUsers.values()));
     } catch (error) {
       console.error('Error fetching messages:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const sendMessage = async (receiverId: string, content: string) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Determine message type based on connection
-      const receiver = users.find(u => u.id === receiverId);
-      const messageType = receiver?.connection_type || 'text';
-
-      const { error } = await supabase
-        .from('direct_messages')
-        .insert({
-          sender_id: user.id,
-          receiver_id: receiverId,
-          content,
-          message_type: messageType,
-          is_read: false
-        });
-
-      if (error) throw error;
-      fetchMessages();
-    } catch (error) {
-      console.error('Error sending message:', error);
     }
   };
 
@@ -300,16 +270,12 @@ export default function MessagesPage() {
   // Filter and sort users
   const filteredUsers = users
     .filter(user => {
-      const matchesSearch = 
-        user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchQuery.toLowerCase());
-      
       const matchesFilter = 
         filter === 'all' ? true :
         filter === 'unread' ? (user.unread_count || 0) > 0 :
         filter === 'favorites' ? user.is_favorite : true;
 
-      return matchesSearch && matchesFilter;
+      return matchesFilter;
     })
     .sort((a, b) => {
       switch (sortBy) {
@@ -324,25 +290,6 @@ export default function MessagesPage() {
           return 0;
       }
     });
-
-  if (loading) {
-    return (
-      <div className="min-h-screen w-full relative font-cabinet-grotesk">
-        <FloatingShapes />
-        <div className="p-6 max-w-4xl mx-auto">
-          <div className="animate-pulse space-y-6">
-            <div className="h-8 bg-white/5 rounded w-1/3"></div>
-            <div className="h-12 bg-white/5 rounded"></div>
-            <div className="space-y-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-24 bg-white/5 rounded"></div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen w-full relative font-cabinet-grotesk">
@@ -361,19 +308,8 @@ export default function MessagesPage() {
           </div>
         </div>
 
-        {/* Filters and Search */}
+        {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search messages..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500/50"
-            />
-          </div>
-
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as 'all' | 'unread' | 'favorites')}
