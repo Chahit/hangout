@@ -82,6 +82,7 @@ interface Group {
   created_at: string;
   role?: string;
   category?: string;
+  member_count?: number;
 }
 
 interface GroupStats {
@@ -110,7 +111,6 @@ export default function GroupsPage() {
     lastActivity: undefined
   });
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [sortBy, setSortBy] = useState<'name' | 'members' | 'activity'>('activity');
   const [user, setCurrentUser] = useState<any>(null);
   const router = useRouter();
@@ -161,6 +161,7 @@ export default function GroupsPage() {
       const groupsWithRoles = groupsData.map((group) => ({
         ...group,
         role: membershipsData.find((m) => m.group_id === group.id)?.role || 'none',
+        member_count: membershipsData.filter((m) => m.group_id === group.id).length
       })) as Group[];
 
       setGroups(groupsWithRoles);
@@ -241,15 +242,14 @@ export default function GroupsPage() {
     .filter(group => {
       const matchesSearch = group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           group.description?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = !selectedCategory || group.category === selectedCategory;
-      return matchesSearch && matchesCategory;
+      return matchesSearch;
     })
     .sort((a, b) => {
       switch (sortBy) {
         case 'name':
           return a.name.localeCompare(b.name);
         case 'members':
-          return (stats.totalMembers) - (stats.totalMembers);
+          return (b.member_count || 0) - (a.member_count || 0);
         case 'activity':
           return new Date(stats.lastActivity || 0).getTime() - 
                  new Date(stats.lastActivity || 0).getTime();
@@ -419,7 +419,7 @@ export default function GroupsPage() {
         </div>
 
         {/* Filters Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
@@ -432,22 +432,9 @@ export default function GroupsPage() {
           </div>
 
           <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500/50"
-          >
-            <option value="">All Categories</option>
-            <option value="study">Study</option>
-            <option value="social">Social</option>
-            <option value="sports">Sports</option>
-            <option value="tech">Tech</option>
-            <option value="arts">Arts</option>
-          </select>
-
-          <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as 'name' | 'members' | 'activity')}
-            className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500/50"
+            className="px-4 py-2 bg-black border border-white/10 rounded-lg focus:outline-none focus:border-purple-500/50 text-gray-300"
           >
             <option value="activity">Sort by Activity</option>
             <option value="name">Sort by Name</option>
@@ -474,6 +461,7 @@ export default function GroupsPage() {
                     <div>
                       <h3 className="font-medium">{group.name}</h3>
                       <p className="text-sm text-gray-400">{group.description}</p>
+                      <p className="text-xs text-purple-400 mt-1">Code: {group.code}</p>
                     </div>
                   </div>
                   {group.role === 'admin' && (
@@ -495,7 +483,7 @@ export default function GroupsPage() {
                     <p className="text-sm text-gray-400">Members</p>
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-purple-400" />
-                      <p className="font-medium">{stats.totalMembers}</p>
+                      <p className="font-medium">{group.member_count}</p>
                     </div>
                   </div>
                   <div className="bg-white/5 p-3 rounded-lg">

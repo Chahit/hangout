@@ -11,17 +11,32 @@ interface User {
   id: string;
   name: string;
   email: string;
-  avatar_url?: string;
-  online_status?: boolean;
-  last_seen?: string;
   last_message?: {
     content: string;
     created_at: string;
     is_sender: boolean;
     is_read: boolean;
+    message_type: 'text' | 'dating' | 'group' | 'event';
   };
   unread_count?: number;
   is_favorite?: boolean;
+  connection_type?: 'dating' | 'group' | 'regular';
+}
+
+interface Message {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  created_at: string;
+  is_read: boolean;
+  message_type: 'text' | 'dating' | 'group' | 'event';
+  sender?: {
+    name: string;
+  };
+  receiver?: {
+    name: string;
+  };
 }
 
 interface ChatStats {
@@ -85,7 +100,7 @@ export default function MessagesPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         setCurrentUser(session.user);
-        fetchUsers(session.user.id);
+        fetchMessages();
         setupRealtimeSubscription(session.user.id);
       }
     };
@@ -102,7 +117,7 @@ export default function MessagesPage() {
         table: 'direct_messages',
         filter: `receiver_id=eq.${userId}`
       }, () => {
-        fetchUsers(userId);
+        fetchMessages();
       })
       .subscribe();
 
@@ -111,73 +126,110 @@ export default function MessagesPage() {
     };
   };
 
-  const fetchUsers = async (currentUserId: string) => {
+  const fetchMessages = async () => {
     try {
-      // Fetch all users except current user
-      const { data: profiles, error } = await supabase
-        .from('profiles')
-        .select('id, name, email, avatar_url, online_status, last_seen')
-        .neq('id', currentUserId);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Fetch direct messages
+      const { data: messages, error } = await supabase
+        .from('direct_messages')
+        .select(`
+          *,
+          sender:profiles!direct_messages_sender_id_fkey(
+            id,
+            name
+          ),
+          receiver:profiles!direct_messages_receiver_id_fkey(
+            id,
+            name
+          )
+        `)
+        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      // Fetch messages and stats for each user
-      const usersWithData = await Promise.all(
-        profiles.map(async (profile) => {
-          // Fetch last message
-          const { data: messages, error: messagesError } = await supabase
-            .from('direct_messages')
-            .select('content, created_at, sender_id, is_read')
-            .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
-            .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`)
-            .order('created_at', { ascending: false })
-            .limit(1);
+      // Get unique users from messages
+      const uniqueUsers = new Map<string, User>();
+      messages.forEach(message => {
+        const otherUser = message.sender_id === user.id ? message.receiver : message.sender;
+        if (otherUser && !uniqueUsers.has(otherUser.id)) {
+          uniqueUsers.set(otherUser.id, {
+            ...otherUser,
+            last_message: {
+              content: message.content,
+              created_at: message.created_at,
+              is_sender: message.sender_id === otherUser.id,
+              is_read: message.is_read,
+              message_type: message.message_type
+            },
+            connection_type: message.message_type === 'dating' ? 'dating' : 'regular'
+          });
+        }
+      });
 
-          // Fetch unread count
-          const { count: unreadCount } = await supabase
-            .from('direct_messages')
-            .select('*', { count: 'exact' })
-            .eq('receiver_id', currentUserId)
-            .eq('sender_id', profile.id)
-            .eq('is_read', false);
+      // Fetch dating connections
+      const { data: datingConnections, error: datingError } = await supabase
+        .from('dating_connections')
+        .select(`
+          *,
+          from_user:profiles!dating_connections_from_user_id_fkey(
+            id,
+            name
+          ),
+          to_user:profiles!dating_connections_to_user_id_fkey(
+            id,
+            name
+          )
+        `)
+        .eq('status', 'accepted')
+        .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`);
 
-          // Fetch favorite status
-          const { data: favorite } = await supabase
-            .from('favorite_contacts')
-            .select('*')
-            .eq('user_id', currentUserId)
-            .eq('contact_id', profile.id)
-            .single();
+      if (datingError) throw datingError;
 
-          // Calculate chat stats
-          const { data: allMessages } = await supabase
-            .from('direct_messages')
-            .select('created_at, sender_id')
-            .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
-            .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`);
+      // Add dating connections to users list if they don't have any messages yet
+      datingConnections?.forEach(conn => {
+        const otherUser = conn.from_user_id === user.id ? conn.to_user : conn.from_user;
+        if (otherUser && !uniqueUsers.has(otherUser.id)) {
+          uniqueUsers.set(otherUser.id, {
+            ...otherUser,
+            connection_type: 'dating'
+          });
+        }
+      });
 
-          const stats = calculateChatStats(allMessages || []);
-
-          return {
-            ...profile,
-            last_message: messages?.[0] ? {
-              content: messages[0].content,
-              created_at: messages[0].created_at,
-              is_sender: messages[0].sender_id === currentUserId,
-              is_read: messages[0].is_read
-            } : undefined,
-            unread_count: unreadCount || 0,
-            is_favorite: !!favorite,
-            chat_stats: stats
-          };
-        })
-      );
-
-      setUsers(usersWithData);
+      setUsers(Array.from(uniqueUsers.values()));
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error('Error fetching messages:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const sendMessage = async (receiverId: string, content: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Determine message type based on connection
+      const receiver = users.find(u => u.id === receiverId);
+      const messageType = receiver?.connection_type || 'text';
+
+      const { error } = await supabase
+        .from('direct_messages')
+        .insert({
+          sender_id: user.id,
+          receiver_id: receiverId,
+          content,
+          message_type: messageType,
+          is_read: false
+        });
+
+      if (error) throw error;
+      fetchMessages();
+    } catch (error) {
+      console.error('Error sending message:', error);
     }
   };
 
@@ -325,7 +377,7 @@ export default function MessagesPage() {
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as 'all' | 'unread' | 'favorites')}
-            className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500/50"
+            className="px-4 py-2 bg-black border border-white/10 rounded-lg focus:outline-none focus:border-purple-500/50 text-gray-300"
           >
             <option value="all">All Messages</option>
             <option value="unread">Unread</option>
@@ -335,7 +387,7 @@ export default function MessagesPage() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as 'recent' | 'name' | 'unread')}
-            className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500/50"
+            className="px-4 py-2 bg-black border border-white/10 rounded-lg focus:outline-none focus:border-purple-500/50 text-gray-300"
           >
             <option value="recent">Most Recent</option>
             <option value="name">Name</option>
@@ -358,18 +410,11 @@ export default function MessagesPage() {
                 <Link href={`/dashboard/messages/${user.id}`}>
                   <div className="bg-white/5 p-4 rounded-xl border border-white/10 hover:border-purple-500/30 transition-colors">
                     <div className="flex items-start gap-4">
-                      {/* Avatar/Status */}
+                      {/* Avatar */}
                       <div className="relative">
                         <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold">
-                          {user.avatar_url ? (
-                            <img src={user.avatar_url} alt={user.name} className="w-full h-full rounded-xl object-cover" />
-                          ) : (
-                            user.name[0].toUpperCase()
-                          )}
+                          {user.name[0].toUpperCase()}
                         </div>
-                        <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-gray-900 ${
-                          user.online_status ? 'bg-green-500' : 'bg-gray-500'
-                        }`} />
                       </div>
 
                       {/* User Info */}

@@ -3,96 +3,67 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { motion } from 'framer-motion';
-import { Database } from '@/lib/database.types';
-
-interface ActivityData {
-  id: string;
-  user_id: string;
-  type: string;
-  timestamp: string;
-  metadata: {
-    value: number;
-    category: string;
-  };
-}
-
-interface DataPoint {
-  value: number;
-  category: string;
-}
 
 export default function ActivityTrends() {
-  const [data, setData] = useState<ActivityData[]>([]);
-  const supabase = createClientComponentClient<Database>();
+  const [totalPosts, setTotalPosts] = useState(0);
+  const [totalEvents, setTotalEvents] = useState(0);
+  const supabase = createClientComponentClient();
 
   useEffect(() => {
-    fetchActivityData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchStats();
   }, []);
 
-  const fetchActivityData = async () => {
+  const fetchStats = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const { data: activityData, error } = await supabase
-        .from('user_activity')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('timestamp', { ascending: false })
-        .limit(30);
+      // Fetch posts count
+      const { count: postsCount } = await supabase
+        .from('support_posts')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', session.user.id);
 
-      if (error) throw error;
-      setData(activityData || []);
+      // Fetch events count
+      const { count: eventsCount } = await supabase
+        .from('events')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', session.user.id);
+
+      setTotalPosts(postsCount || 0);
+      setTotalEvents(eventsCount || 0);
     } catch (error) {
-      console.error('Error fetching activity data:', error);
-      // Fallback to mock data if there's an error
-      const mockData: ActivityData[] = Array.from({ length: 30 }, (_, i) => ({
-        id: i.toString(),
-        user_id: 'mock',
-        type: 'activity',
-        timestamp: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString(),
-        metadata: {
-          value: Math.floor(Math.random() * 100),
-          category: ['Study', 'Social', 'Events'][Math.floor(Math.random() * 3)]
-        }
-      }));
-      setData(mockData);
+      console.error('Error fetching stats:', error);
     }
-  };
-
-  const generateDataPoints = (): DataPoint[] => {
-    if (data.length === 0) {
-      return Array.from({ length: 12 }, () => ({
-        value: Math.floor(Math.random() * 100),
-        category: 'default'
-      }));
-    }
-
-    return data.slice(0, 12).map(activity => ({
-      value: activity.metadata.value,
-      category: activity.metadata.category
-    }));
   };
 
   return (
-    <div className="w-full h-48 bg-black/20 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Activity Trends</h3>
-      </div>
-      <div className="relative h-32">
-        <div className="absolute inset-0 flex items-end justify-between">
-          {generateDataPoints().map((point, index) => (
-            <motion.div
-              key={index}
-              className="w-4 bg-gradient-to-t from-purple-500 to-pink-500 rounded-t-sm"
-              initial={{ height: 0 }}
-              animate={{ height: `${point.value}%` }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
-            />
-          ))}
+    <div className="bg-gray-800/50 backdrop-blur-lg rounded-lg p-6 mb-6">
+      <h2 className="text-xl font-semibold mb-4 text-white">Activity Overview</h2>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-gray-700/50 p-4 rounded-lg">
+          <h3 className="text-lg font-medium text-white">Total Posts</h3>
+          <motion.p 
+            className="text-3xl font-bold text-pink-500"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            {totalPosts}
+          </motion.p>
+        </div>
+        <div className="bg-gray-700/50 p-4 rounded-lg">
+          <h3 className="text-lg font-medium text-white">Total Events</h3>
+          <motion.p 
+            className="text-3xl font-bold text-blue-500"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            {totalEvents}
+          </motion.p>
         </div>
       </div>
     </div>
   );
-} 
+}

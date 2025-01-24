@@ -6,246 +6,219 @@ import { calculateCompatibilityScore } from '../questions';
 import { Heart, X, MessageCircle, Loader2, UserPlus, Check } from 'lucide-react';
 import Link from 'next/link';
 import type { Database } from '@/lib/database.types';
+import { motion } from 'framer-motion';
 
-interface UserProfile {
+interface Profile {
   id: string;
   name: string;
   email: string;
-  avatar_url?: string;
 }
 
-interface Match {
+interface DatingProfile {
   id: string;
-  sender_id: string;
-  receiver_id: string;
-  status: string;
+  user_id: string;
+  gender: 'male' | 'female';
+  looking_for: 'male' | 'female';
+  bio: string | null;
+  interests: string[];
+  answers: Record<string, any>;
+  has_completed_profile: boolean;
   created_at: string;
-  sender: UserProfile;
-  receiver: UserProfile;
-  user_id?: string;
-  email?: string;
-  bio?: string;
-  interests?: string[];
-  answers?: any;
+  updated_at: string;
+  profiles?: {
+    id: string;
+    name: string;
+    email: string;
+  };
   compatibility?: number;
-  matchStatus?: string;
+}
+
+interface DatingConnection {
+  id: string;
+  from_user_id: string;
+  to_user_id: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
 }
 
 export default function MatchesPage() {
   const supabase = createClientComponentClient<Database>();
-  const [matches, setMatches] = useState<Match[]>([]);
+  const [matches, setMatches] = useState<DatingProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<DatingProfile | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  const fetchMatches = async () => {
+    try {
+      setLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.user) {
+        throw new Error('Not authenticated');
+      }
+
+      // First get the user's profile and answers
+      const { data: myProfile, error: profileError } = await supabase
+        .from('dating_profiles')
+        .select(`
+          *,
+          profiles!inner (
+            id,
+            name,
+            email
+          )
+        `)
+        .eq('user_id', session.user.id)
+        .single();
+
+      if (profileError) throw profileError;
+      setUserProfile(myProfile);
+
+      // Get potential matches based on gender preference
+      const { data: potentialMatches, error: matchesError } = await supabase
+        .from('dating_profiles')
+        .select(`
+          *,
+          profiles!inner (
+            id,
+            name,
+            email
+          )
+        `)
+        .eq('gender', myProfile.looking_for)
+        .eq('looking_for', myProfile.gender)
+        .neq('user_id', session.user.id)
+        .eq('has_completed_profile', true);
+
+      if (matchesError) throw matchesError;
+
+      // Calculate compatibility scores
+      const matchesWithScores = potentialMatches.map((match) => ({
+        ...match,
+        compatibility: calculateCompatibilityScore(myProfile.answers, match.answers)
+      }));
+
+      // Sort by compatibility score
+      const sortedMatches = matchesWithScores.sort((a, b) => 
+        (b.compatibility || 0) - (a.compatibility || 0)
+      );
+
+      setMatches(sortedMatches);
+    } catch (error) {
+      console.error('Error fetching matches:', error);
+      setMessage({ type: 'error', text: 'Failed to load matches' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createConnection = async (toUserId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { error } = await supabase
+        .from('dating_connections')
+        .insert({
+          from_user_id: session.user.id,
+          to_user_id: toUserId,
+          status: 'pending'
+        });
+
+      if (error) throw error;
+      setMessage({ type: 'success', text: 'Connection request sent!' });
+      fetchMatches();
+    } catch (error) {
+      console.error('Error creating connection:', error);
+      setMessage({ type: 'error', text: 'Failed to send connection request' });
+    }
+  };
 
   useEffect(() => {
     fetchMatches();
   }, []);
 
-  async function fetchMatches() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      // Fetch current user's profile
-      const { data: profile, error: profileError } = await supabase
-        .from('dating_profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (profileError) throw profileError;
-      setUserProfile(profile);
-
-      // Fetch all other profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from('dating_profiles')
-        .select(`
-          *,
-          users:user_id (
-            email
-          )
-        `)
-        .neq('user_id', user.id);
-
-      if (profilesError) throw profilesError;
-
-      // Fetch existing match requests
-      const { data: matchRequests, error: matchError } = await supabase
-        .from('dating_matches')
-        .select('*')
-        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
-
-      if (matchError) throw matchError;
-
-      // Calculate compatibility and combine with match status
-      const matchesWithCompatibility = profiles.map((otherProfile: any) => {
-        const compatibility = calculateCompatibilityScore(profile.answers, otherProfile.answers);
-        const matchRequest = matchRequests?.find(
-          (m: any) => (m.sender_id === user.id && m.receiver_id === otherProfile.user_id) ||
-                      (m.sender_id === otherProfile.user_id && m.receiver_id === user.id)
-        );
-
-        return {
-          id: otherProfile.id,
-          sender_id: user.id,
-          receiver_id: otherProfile.user_id,
-          status: matchRequest?.status || 'pending',
-          created_at: new Date().toISOString(),
-          user_id: otherProfile.user_id,
-          email: otherProfile.users.email,
-          bio: otherProfile.bio,
-          interests: otherProfile.interests,
-          answers: otherProfile.answers,
-          compatibility: Math.round(compatibility * 100),
-          matchStatus: matchRequest ? matchRequest.status : undefined
-        } as Match;
-      });
-
-      // Sort by compatibility
-      matchesWithCompatibility.sort((a, b) => {
-        const compA = a.compatibility || 0;
-        const compB = b.compatibility || 0;
-        return compB - compA;
-      });
-      setMatches(matchesWithCompatibility);
-    } catch (error) {
-      console.error('Error fetching matches:', error);
-      setMessage({ type: 'error', text: 'Failed to load matches. Please try again.' });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function sendMatchRequest(matchId: string) {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { error } = await supabase
-        .from('dating_matches')
-        .insert({
-          sender_id: user.id,
-          receiver_id: matchId,
-          status: 'pending',
-          compatibility_score: matches.find(m => m.user_id === matchId)?.compatibility || 0
-        });
-
-      if (error) throw error;
-
-      // Update local state
-      setMatches(prev => prev.map(match => 
-        match.user_id === matchId 
-          ? { ...match, matchStatus: 'pending' }
-          : match
-      ));
-
-      setMessage({ type: 'success', text: 'Match request sent!' });
-    } catch (error) {
-      console.error('Error sending match request:', error);
-      setMessage({ type: 'error', text: 'Failed to send match request. Please try again.' });
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-      </div>
-    );
-  }
-
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex items-center gap-2 mb-8">
-        <Heart className="w-8 h-8 text-purple-500" />
-        <h1 className="text-3xl font-bold">Your Matches</h1>
+      <div className="mb-8 flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-white">Your Matches</h1>
+        <Link 
+          href="/dashboard/dating/requests" 
+          className="text-purple-400 hover:text-purple-300 transition"
+        >
+          View Connection Requests
+        </Link>
       </div>
 
-      {message && (
-        <div className={`p-4 rounded-lg mb-8 ${
-          message.type === 'success' ? 'bg-green-800' : 'bg-red-800'
-        }`}>
-          {message.text}
+      {loading ? (
+        <div className="flex justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {matches.map((match) => (
+            <motion.div
+              key={match.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/5 p-6 rounded-xl backdrop-blur-lg border border-white/10"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-xl font-semibold text-white">
+                    {match.profiles?.name || 'Anonymous'}
+                  </h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Heart className="w-4 h-4 text-pink-500" />
+                    <span className="text-gray-300">
+                      {Math.round((match.compatibility || 0) * 100)}% Match
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {match.bio && (
+                <p className="text-gray-300 mb-4">{match.bio}</p>
+              )}
+
+              {match.interests && match.interests.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex flex-wrap gap-2">
+                    {match.interests.map((interest, index) => (
+                      <span
+                        key={index}
+                        className="px-3 py-1 bg-white/10 rounded-full text-sm text-gray-300"
+                      >
+                        {interest}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => createConnection(match.user_id)}
+                  className="flex-1 p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white flex items-center justify-center gap-2 hover:opacity-90 transition"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Connect
+                </button>
+              </div>
+            </motion.div>
+          ))}
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {matches.map((match) => (
-          <div key={match.id} className="bg-gray-800 rounded-lg p-6 space-y-4">
-            {/* Profile Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">
-                  {match.email?.split('@')[0] || 'Anonymous User'}
-                </h3>
-                <div className="flex items-center gap-2 text-purple-400">
-                  <Heart className="w-4 h-4" />
-                  <span>{match.compatibility}% Match</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Bio */}
-            <p className="text-gray-300">{match.bio}</p>
-
-            {/* Email */}
-            {match.email && (
-              <p className="text-sm text-gray-600 mb-2">{match.email}</p>
-            )}
-
-            {/* Interests */}
-            {match.interests && match.interests.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {match.interests.map((interest, index) => (
-                  <span
-                    key={index}
-                    className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-sm"
-                  >
-                    {interest}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex justify-end gap-4 pt-4">
-              {match.matchStatus ? (
-                match.matchStatus === 'accepted' ? (
-                  <Link
-                    href={`/dashboard/dating/chat/${match.id}`}
-                    className="flex items-center justify-center gap-2 w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                  >
-                    <MessageCircle size={20} />
-                    Chat
-                  </Link>
-                ) : (
-                  <button
-                    className="w-full px-4 py-2 bg-gray-200 text-gray-600 rounded-lg cursor-not-allowed"
-                    disabled
-                  >
-                    Pending
-                  </button>
-                )
-              ) : (
-                <button
-                  onClick={() => sendMatchRequest(match.user_id || '')}
-                  className="flex items-center justify-center gap-2 w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                >
-                  <UserPlus size={20} />
-                  Connect
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {matches.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-gray-400">No matches found yet. Check back later!</p>
+      {message && (
+        <div
+          className={`fixed bottom-4 right-4 px-6 py-3 rounded-lg text-white ${
+            message.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+          }`}
+        >
+          {message.text}
         </div>
       )}
     </div>
   );
-} 
+}

@@ -7,27 +7,33 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import Modal from '@/components/shared/Modal';
+import Image from 'next/image';
 
 interface SupportPost {
   id: string;
   title: string;
   content: string;
   category: string;
+  is_anonymous: boolean;
+  is_resolved: boolean;
   created_by: string;
   created_at: string;
-  is_anonymous: boolean;
+  updated_at: string;
   profiles?: {
     name: string;
   };
-  support_responses: SupportResponse[];
+  support_responses?: SupportResponse[];
 }
 
 interface SupportResponse {
   id: string;
   content: string;
+  post_id: string;
   created_by: string;
-  created_at: string;
   is_anonymous: boolean;
+  is_accepted: boolean;
+  created_at: string;
+  updated_at: string;
   profiles?: {
     name: string;
   };
@@ -89,12 +95,13 @@ const FloatingShapes = () => (
 
 export default function SupportPage() {
   const supabase = createClientComponentClient();
+  const [user, setUser] = useState<any>(null);
   const [posts, setPosts] = useState<SupportPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortByNewest, setSortByNewest] = useState(true);
+  const [sortBy, setSortBy] = useState('newest');
   const [showCommentModal, setShowCommentModal] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
   const [isAnonymousComment, setIsAnonymousComment] = useState(false);
@@ -106,31 +113,49 @@ export default function SupportPage() {
   });
 
   useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getUser();
+  }, []);
+
+  useEffect(() => {
     fetchPosts();
-  }, [selectedCategory, sortByNewest]);
+  }, [selectedCategory, sortBy]);
+
+  const sortPosts = (posts: SupportPost[]): SupportPost[] => {
+    return [...posts].sort((a: SupportPost, b: SupportPost): number => {
+      switch (sortBy) {
+        case 'oldest':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'mostResponses':
+          return ((b.support_responses?.length || 0) - (a.support_responses?.length || 0));
+        default: // 'newest'
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+    });
+  };
 
   const fetchPosts = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       let query = supabase
         .from('support_posts')
         .select(`
           *,
-          profiles!support_posts_created_by_fkey (
-            id,
+          profiles (
             name
           ),
           support_responses (
             *,
-            profiles!support_responses_created_by_fkey (
-              id,
+            profiles (
               name
             )
           )
         `)
-        .order('created_at', { ascending: !sortByNewest });
+        .order('created_at', { ascending: false });
 
       if (selectedCategory) {
         query = query.eq('category', selectedCategory);
@@ -140,33 +165,35 @@ export default function SupportPage() {
 
       if (error) throw error;
 
-      setPosts(posts || []);
+      const transformedPosts = posts.map((post): SupportPost => ({
+        ...post,
+        support_responses: (post.support_responses || [])
+          .sort((a: SupportResponse, b: SupportResponse) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )
+      }));
+
+      setPosts(sortPosts(transformedPosts));
     } catch (error) {
-      console.error('Error fetching support posts:', error);
+      console.error('Error fetching posts:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreatePost = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPost.title || !newPost.content) return;
-
+  const handleCreatePost = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { error } = await supabase
         .from('support_posts')
-        .insert([
-          {
-            title: newPost.title,
-            content: newPost.content,
-            created_by: user.id,
-            is_anonymous: newPost.is_anonymous,
-            category: newPost.category
-          }
-        ]);
+        .insert({
+          title: newPost.title,
+          content: newPost.content,
+          category: newPost.category,
+          is_anonymous: newPost.is_anonymous,
+          created_by: user.id
+        });
 
       if (error) throw error;
 
@@ -179,27 +206,22 @@ export default function SupportPage() {
       });
       fetchPosts();
     } catch (error) {
-      console.error('Error creating support post:', error);
+      console.error('Error creating post:', error);
     }
   };
 
-  const handleCreateComment = async (postId: string) => {
-    if (!newComment.trim()) return;
-
+  const handleCreateResponse = async (postId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { error } = await supabase
         .from('support_responses')
-        .insert([
-          {
-            content: newComment,
-            post_id: postId,
-            created_by: user.id,
-            is_anonymous: isAnonymousComment
-          }
-        ]);
+        .insert({
+          content: newComment,
+          post_id: postId,
+          created_by: user.id,
+          is_anonymous: isAnonymousComment
+        });
 
       if (error) throw error;
 
@@ -208,14 +230,70 @@ export default function SupportPage() {
       setIsAnonymousComment(false);
       fetchPosts();
     } catch (error) {
-      console.error('Error creating comment:', error);
+      console.error('Error creating response:', error);
     }
   };
 
-  const filteredPosts = posts.filter(post => 
-    post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    post.content.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const handleAcceptResponse = async (postId: string, responseId: string) => {
+    try {
+      if (!user) return;
+
+      // First, update the post to mark it as resolved
+      const { error: postError } = await supabase
+        .from('support_posts')
+        .update({ is_resolved: true })
+        .eq('id', postId)
+        .eq('created_by', user.id);
+
+      if (postError) throw postError;
+
+      // Then, mark the response as accepted
+      const { error: responseError } = await supabase
+        .from('support_responses')
+        .update({ is_accepted: true })
+        .eq('id', responseId);
+
+      if (responseError) throw responseError;
+
+      fetchPosts();
+    } catch (error) {
+      console.error('Error accepting response:', error);
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    try {
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('support_posts')
+        .delete()
+        .eq('id', postId)
+        .eq('created_by', user.id);
+
+      if (error) throw error;
+      fetchPosts();
+    } catch (error) {
+      console.error('Error deleting post:', error);
+    }
+  };
+
+  const handleDeleteResponse = async (responseId: string) => {
+    try {
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('support_responses')
+        .delete()
+        .eq('id', responseId)
+        .eq('created_by', user.id);
+
+      if (error) throw error;
+      fetchPosts();
+    } catch (error) {
+      console.error('Error deleting response:', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -250,13 +328,15 @@ export default function SupportPage() {
             </p>
           </div>
           <div className="flex gap-4">
-            <button
-              onClick={() => setSortByNewest(!sortByNewest)}
-              className="px-4 py-2 bg-white/5 rounded-lg hover:bg-white/10 transition-colors flex items-center gap-2"
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="bg-white/5 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             >
-              <Clock className="w-4 h-4" />
-              {sortByNewest ? 'Newest First' : 'Oldest First'}
-            </button>
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="mostResponses">Most Responses</option>
+            </select>
             <motion.button
               variants={buttonVariants}
               whileHover="hover"
@@ -316,7 +396,7 @@ export default function SupportPage() {
 
         {/* Posts Grid */}
         <div className="grid grid-cols-1 gap-4">
-          {filteredPosts.map((post) => (
+          {sortPosts(posts).map((post) => (
             <motion.div
               key={post.id}
               variants={cardVariants}
@@ -326,29 +406,28 @@ export default function SupportPage() {
               whileTap="tap"
               className="bg-white/5 rounded-xl p-4 md:p-6 border border-transparent hover:border-purple-500/30 transition-colors"
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-base md:text-lg truncate">
-                    {post.title}
-                  </h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full">
-                      {post.category}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-purple-400" />
+                  <span className="text-sm text-purple-400">{post.category}</span>
+                  {post.is_anonymous && (
+                    <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded-full">
+                      Anonymous
                     </span>
-                    {post.is_anonymous && (
-                      <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full">
-                        Anonymous
-                      </span>
-                    )}
-                  </div>
+                  )}
                 </div>
-                <div className="flex flex-col items-end text-xs text-gray-400">
-                  <span>{format(new Date(post.created_at), 'MMM d, yyyy')}</span>
-                  <span>{format(new Date(post.created_at), 'h:mm a')}</span>
-                </div>
+                {post.created_by === user?.id && (
+                  <button
+                    onClick={() => handleDeletePost(post.id)}
+                    className="text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
-              <p className="text-sm md:text-base text-gray-400 mt-3">
+              <h3 className="text-lg font-medium mb-2">{post.title}</h3>
+              <p className="text-gray-400 mb-4">
                 {post.content}
               </p>
 
@@ -359,19 +438,24 @@ export default function SupportPage() {
                     {post.is_anonymous ? 'Anonymous' : post.profiles?.name}
                   </span>
                 </div>
-                <button
-                  onClick={() => setShowCommentModal(post.id)}
-                  className="flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span className="text-sm">
-                    {post.support_responses.length} Responses
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-gray-400">
+                    {format(new Date(post.created_at), 'MMM d, h:mm a')}
                   </span>
-                </button>
+                  <button
+                    onClick={() => setShowCommentModal(post.id)}
+                    className="flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span className="text-sm">
+                      {post.support_responses?.length || 0} Responses
+                    </span>
+                  </button>
+                </div>
               </div>
 
-              {/* Comments Section */}
-              {post.support_responses.length > 0 && (
+              {/* Responses Section */}
+              {post.support_responses && post.support_responses.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-white/10">
                   <h4 className="text-sm font-medium text-gray-400 mb-3">Responses</h4>
                   <div className="space-y-3">
@@ -384,11 +468,27 @@ export default function SupportPage() {
                           <span className="text-sm text-gray-300">
                             {response.is_anonymous ? 'Anonymous' : response.profiles?.name}
                           </span>
-                          <span className="text-xs text-gray-400">
-                            {format(new Date(response.created_at), 'MMM d, h:mm a')}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400">
+                              {format(new Date(response.created_at), 'MMM d, h:mm a')}
+                            </span>
+                            {response.created_by === user?.id && (
+                              <button
+                                onClick={() => handleDeleteResponse(response.id)}
+                                className="text-red-400 hover:text-red-300 transition-colors"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <p className="text-sm text-gray-400">{response.content}</p>
+                        {response.is_accepted && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <ThumbsUp className="w-4 h-4 text-purple-500" />
+                            <span className="text-xs text-purple-500">Accepted</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -399,7 +499,7 @@ export default function SupportPage() {
         </div>
 
         {/* Empty State */}
-        {filteredPosts.length === 0 && (
+        {posts.length === 0 && (
           <motion.div
             variants={cardVariants}
             initial="hidden"
@@ -436,7 +536,10 @@ export default function SupportPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleCreatePost} className="space-y-4">
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                handleCreatePost();
+              }} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Title</label>
                   <input
@@ -532,7 +635,7 @@ export default function SupportPage() {
                     Cancel
                   </button>
                   <button
-                    onClick={() => handleCreateComment(showCommentModal)}
+                    onClick={() => handleCreateResponse(showCommentModal)}
                     className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:opacity-90 disabled:opacity-50"
                     disabled={!newComment.trim()}
                   >
@@ -546,4 +649,4 @@ export default function SupportPage() {
       </div>
     </div>
   );
-} 
+}

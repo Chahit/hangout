@@ -2,18 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Heart, MessageCircle, Share, MoreVertical, Plus, X, Trash2, ArrowUpDown, MessageSquare, Send } from 'lucide-react';
+import { Heart, MessageCircle, Share, MoreVertical, Plus, X, Trash2, ArrowUpDown, MessageSquare, Send, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Database } from '@/lib/database.types';
 import { format } from 'date-fns';
 import Modal from '@/components/shared/Modal';
+import Image from 'next/image';
 
 interface User {
   id: string;
+  name: string;
   email: string;
-  user_metadata: {
-    name: string;
-  };
 }
 
 interface Confession {
@@ -21,29 +20,28 @@ interface Confession {
   content: string;
   created_at: string;
   user_id: string;
-  likes: number;
-  comments: number;
-  anonymous: boolean;
-}
-
-interface ConfessionLike {
-  id: string;
-  confession_id: string;
-  user_id: string;
-  created_at: string;
+  media_url?: string;
+  has_liked: boolean;
+  likes_count: number;
+  user_name: string;
+  comments: Comment[];
+  likes?: Array<{ user_id: string }>;
+  profiles?: { name: string };
 }
 
 interface Comment {
   id: string;
   content: string;
-  anonymous_name: string;
   created_at: string;
+  user_id: string;
+  user_name: string;
+  confession_id: string;
 }
 
-const ANONYMOUS_NAMES = [
-  'Mysterious Owl', 'Silent Fox', 'Hidden Dragon', 'Secret Panda', 'Shadow Cat',
-  'Invisible Ninja', 'Unknown Sage', 'Masked Phoenix', 'Cryptic Wolf', 'Stealth Eagle'
-];
+interface Message {
+  type: 'success' | 'error';
+  text: string;
+}
 
 // Add type for sorting options
 type SortOption = 'newest' | 'oldest' | 'mostLiked';
@@ -93,61 +91,89 @@ const FloatingShapes = () => (
 );
 
 export default function ConfessionsPage() {
+  const [user, setUser] = useState<User | null>(null);
   const [confessions, setConfessions] = useState<Confession[]>([]);
   const [newConfession, setNewConfession] = useState('');
-  const [showPostModal, setShowPostModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [mediaPreview, setMediaPreview] = useState<string>('');
-  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [message, setMessage] = useState<Message | null>(null);
+  const [showPostModal, setShowPostModal] = useState(false);
   const [commenting, setCommenting] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const supabase = createClientComponentClient<Database>();
 
   useEffect(() => {
     const setup = async () => {
-      await Promise.all([fetchConfessions(), getCurrentUser()]);
+      await Promise.all([fetchUser(), fetchConfessions()]);
     };
     setup();
   }, []);
 
+  const fetchUser = async () => {
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .single();
+
+        const userData: User = {
+          id: currentUser.id,
+          name: profile?.name || '',
+          email: profile?.email || ''
+        };
+        setUser(userData);
+      }
+    } catch (error) {
+      console.error('Error fetching user:', error);
+    }
+  };
+
   const fetchConfessions = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) return;
 
-      const { data: confessions, error } = await supabase
+      const { data: confessionsData, error } = await supabase
         .from('confessions')
         .select(`
           *,
-          comments:confession_comments(*),
-          likes:confession_likes(*)
+          profiles:user_id(name),
+          likes:confession_likes(user_id),
+          comments:confession_comments(
+            id,
+            content,
+            created_at,
+            user_id,
+            profiles:user_id(name)
+          )
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      // Transform the data to include like count and has_liked status
-      const transformedConfessions = confessions.map(confession => ({
-        ...confession,
-        likes: confession.likes?.length || 0,
-        has_liked: confession.likes?.some((like: ConfessionLike) => like.user_id === user.id) || false
-      }));
+      if (confessionsData) {
+        const formattedConfessions = confessionsData.map((confession: Confession) => ({
+          ...confession,
+          user_name: confession.profiles?.name || 'Anonymous',
+          has_liked: confession.likes?.some((like: { user_id: string }) => like.user_id === currentUser.id) || false,
+          likes_count: confession.likes?.length || 0,
+          comments: confession.comments?.map((comment: any) => ({
+            ...comment,
+            user_name: comment.profiles?.name || 'Anonymous'
+          })) || []
+        }));
 
-      setConfessions(transformedConfessions);
+        setConfessions(formattedConfessions);
+      }
     } catch (error) {
       console.error('Error fetching confessions:', error);
-    } finally {
-      setLoading(false);
+      setMessage({ type: 'error', text: 'Failed to load confessions' });
     }
-  };
-
-  const getCurrentUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    setCurrentUser(user);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,7 +181,6 @@ export default function ConfessionsPage() {
     if (!file) return;
 
     const fileType = file.type.startsWith('image/') ? 'image' : 'video';
-    setMediaType(fileType);
     setSelectedFile(file);
 
     const reader = new FileReader();
@@ -165,57 +190,55 @@ export default function ConfessionsPage() {
     reader.readAsDataURL(file);
   };
 
-  const handlePost = async () => {
+  const handlePostConfession = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) return;
 
-      let mediaUrl = '';
+      let mediaUrl = null;
+
       if (selectedFile) {
         const fileExt = selectedFile.name.split('.').pop();
         const fileName = `${Math.random()}.${fileExt}`;
-        const filePath = `${mediaType}s/${fileName}`;
+        const filePath = `${currentUser.id}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('confessions')
+          .from('confession_media')
           .upload(filePath, selectedFile);
 
         if (uploadError) throw uploadError;
 
         const { data: { publicUrl } } = supabase.storage
-          .from('confessions')
+          .from('confession_media')
           .getPublicUrl(filePath);
 
         mediaUrl = publicUrl;
       }
 
-      const anonymousName = ANONYMOUS_NAMES[Math.floor(Math.random() * ANONYMOUS_NAMES.length)];
-
-      const { error } = await supabase.from('confessions').insert({
-        content: newConfession,
-        anonymous_name: anonymousName,
-        user_id: user.id,
-        media_url: mediaUrl || null,
-        media_type: mediaType || null
-      });
+      const { error } = await supabase
+        .from('confessions')
+        .insert({
+          content: newConfession,
+          user_id: currentUser.id,
+          media_url: mediaUrl,
+        });
 
       if (error) throw error;
 
       setNewConfession('');
-      setShowPostModal(false);
       setSelectedFile(null);
-      setMediaPreview('');
-      setMediaType(null);
+      setMediaPreview(null);
+      setShowPostModal(false);
       fetchConfessions();
     } catch (error) {
-      console.error('Error creating confession:', error);
+      console.error('Error posting confession:', error);
     }
   };
 
   const handleLike = async (confessionId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) return;
 
       const confession = confessions.find(c => c.id === confessionId);
       if (!confession) return;
@@ -225,11 +248,11 @@ export default function ConfessionsPage() {
           .from('confession_likes')
           .delete()
           .eq('confession_id', confessionId)
-          .eq('user_id', user.id);
+          .eq('user_id', currentUser.id);
       } else {
         await supabase.from('confession_likes').insert({
           confession_id: confessionId,
-          user_id: user.id
+          user_id: currentUser.id
         });
       }
 
@@ -241,16 +264,16 @@ export default function ConfessionsPage() {
 
   const handleComment = async (confessionId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) return;
 
-      const anonymousName = ANONYMOUS_NAMES[Math.floor(Math.random() * ANONYMOUS_NAMES.length)];
+      const anonymousName = 'Anonymous';
 
       const { error } = await supabase.from('confession_comments').insert({
         confession_id: confessionId,
         content: newComment,
         anonymous_name: anonymousName,
-        user_id: user.id
+        user_id: currentUser.id
       });
 
       if (error) throw error;
@@ -267,19 +290,19 @@ export default function ConfessionsPage() {
     try {
       console.log('Starting delete process for confession:', confessionId);
       
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) {
         console.log('No authenticated user found');
         return;
       }
-      console.log('Current user:', user.id);
+      console.log('Current user:', currentUser.id);
 
       const confession = confessions.find(c => c.id === confessionId);
       if (!confession) {
         console.log('Confession not found:', confessionId);
         return;
       }
-      if (confession.user_id !== user.id) {
+      if (confession.user_id !== currentUser.id) {
         console.log('User does not own this confession');
         return;
       }
@@ -291,8 +314,8 @@ export default function ConfessionsPage() {
         const mediaPath = confession.media_url.split('/').pop();
         if (mediaPath) {
           const { error: storageError } = await supabase.storage
-            .from('confessions')
-            .remove([`${confession.media_type}s/${mediaPath}`]);
+            .from('confession_media')
+            .remove([`${mediaPath}`]);
           
           if (storageError) {
             console.error('Error deleting media:', storageError);
@@ -342,7 +365,7 @@ export default function ConfessionsPage() {
     }
   };
 
-  if (loading) {
+  if (!user) {
     return (
       <div className="p-6">
         <div className="animate-pulse space-y-4">
@@ -396,7 +419,7 @@ export default function ConfessionsPage() {
 
         {/* Confessions List */}
         <div className="space-y-4 md:space-y-6">
-          {confessions.map((confession) => (
+          {sortConfessions(confessions).map((confession) => (
             <motion.div
               key={confession.id}
               variants={cardVariants}
@@ -409,12 +432,12 @@ export default function ConfessionsPage() {
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
                     <span className="text-white font-medium">
-                      {confession.anonymous_name[0]}
+                      {confession.user_name[0]}
                     </span>
                   </div>
                   <div>
                     <h3 className="font-medium text-sm md:text-base">
-                      {confession.anonymous_name}
+                      {confession.user_name}
                     </h3>
                     <p className="text-xs text-gray-400">
                       {format(new Date(confession.created_at), 'MMM d, h:mm a')}
@@ -422,7 +445,7 @@ export default function ConfessionsPage() {
                   </div>
                 </div>
                 
-                {confession.user_id === currentUser?.id && (
+                {confession.user_id === user.id && (
                   <motion.button
                     variants={buttonVariants}
                     whileHover="hover"
@@ -442,20 +465,14 @@ export default function ConfessionsPage() {
 
               {/* Media Content */}
               {confession.media_url && (
-                <div className="rounded-lg overflow-hidden bg-white/5">
-                  {confession.media_type === 'image' ? (
-                    <img
-                      src={confession.media_url}
-                      alt="Confession media"
-                      className="w-full h-auto max-h-96 object-cover"
-                    />
-                  ) : (
-                    <video
-                      src={confession.media_url}
-                      controls
-                      className="w-full h-auto max-h-96"
-                    />
-                  )}
+                <div className="relative mt-4">
+                  <Image
+                    src={confession.media_url}
+                    alt="Confession media"
+                    width={400}
+                    height={300}
+                    className="rounded-lg max-h-[300px] object-cover"
+                  />
                 </div>
               )}
 
@@ -473,7 +490,7 @@ export default function ConfessionsPage() {
                   }`}
                 >
                   <Heart className={`w-4 h-4 ${confession.has_liked ? 'fill-current' : ''}`} />
-                  {confession.likes}
+                  {confession.likes_count}
                 </motion.button>
 
                 <motion.button
@@ -484,7 +501,7 @@ export default function ConfessionsPage() {
                   className="flex items-center gap-2 text-sm text-gray-400 hover:text-purple-500 transition-colors"
                 >
                   <MessageSquare className="w-4 h-4" />
-                  {confession.comments?.length || 0}
+                  {confession.comments.length}
                 </motion.button>
 
                 <motion.button
@@ -501,17 +518,17 @@ export default function ConfessionsPage() {
               {/* Comments Section */}
               {commenting === confession.id && (
                 <div className="space-y-4 pt-4 border-t border-white/10">
-                  {confession.comments?.map((comment) => (
+                  {confession.comments.map((comment) => (
                     <div key={comment.id} className="flex gap-3">
                       <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
                         <span className="text-xs font-medium">
-                          {comment.anonymous_name[0]}
+                          {comment.user_name[0]}
                         </span>
                       </div>
                       <div className="flex-1 space-y-1">
                         <div className="flex items-baseline gap-2">
                           <span className="text-sm font-medium">
-                            {comment.anonymous_name}
+                            {comment.user_name}
                           </span>
                           <span className="text-xs text-gray-400">
                             {format(new Date(comment.created_at), 'MMM d, h:mm a')}
@@ -580,43 +597,36 @@ export default function ConfessionsPage() {
                 />
 
                 {mediaPreview && (
-                  <div className="relative">
-                    {mediaType === 'image' ? (
-                      <img
-                        src={mediaPreview}
-                        alt="Preview"
-                        className="w-full h-48 object-cover rounded-xl"
-                      />
-                    ) : (
-                      <video
-                        src={mediaPreview}
-                        className="w-full h-48 object-cover rounded-xl"
-                        controls
-                      />
-                    )}
+                  <div className="relative mt-4">
+                    <Image
+                      src={mediaPreview}
+                      alt="Media preview"
+                      width={400}
+                      height={300}
+                      className="rounded-lg max-h-[300px] object-cover"
+                    />
                     <button
                       onClick={() => {
                         setSelectedFile(null);
-                        setMediaPreview('');
-                        setMediaType(null);
+                        setMediaPreview(null);
                       }}
-                      className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
+                      className="absolute top-2 right-2 p-1 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-4 h-4 text-white" />
                     </button>
                   </div>
                 )}
 
                 <div className="flex gap-2">
-                  <label className="flex-1">
+                  <label className="flex-1 cursor-pointer">
                     <input
                       type="file"
-                      accept="image/*,video/*"
+                      accept="image/*"
                       onChange={handleFileSelect}
                       className="hidden"
                     />
                     <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 rounded-xl hover:bg-white/10 transition-all cursor-pointer text-sm">
-                      <Image className="w-4 h-4" />
+                      <ImageIcon className="w-4 h-4" />
                       Add Media
                     </div>
                   </label>
@@ -625,7 +635,7 @@ export default function ConfessionsPage() {
                     variants={buttonVariants}
                     whileHover="hover"
                     whileTap="tap"
-                    onClick={handlePost}
+                    onClick={handlePostConfession}
                     disabled={!newConfession.trim()}
                     className="flex-[2] px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
                   >

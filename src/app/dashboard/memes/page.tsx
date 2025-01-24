@@ -11,18 +11,30 @@ interface Meme {
   id: string;
   title: string;
   media_url: string;
-  user_id: string;
-  user_email: string;
-  likes: number;
+  media_type: 'image' | 'video';
   created_at: string;
-  comments: Comment[];
-  has_liked?: boolean;
+  user_id: string;
+  has_liked: boolean;
+  likes_count: number;
+  comments: MemeComment[];
+  user_name: string;
+  likes?: Array<{ user_id: string }>;
+  profiles?: { name: string };
 }
 
-interface Comment {
+interface MemeComment {
   id: string;
   content: string;
-  user_email: string;
+  created_at: string;
+  user_id: string;
+  user_name: string;
+  meme_id: string;
+}
+
+interface MemeLike {
+  id: string;
+  meme_id: string;
+  user_id: string;
   created_at: string;
 }
 
@@ -30,19 +42,21 @@ interface MemeWithLikes {
   id: string;
   title: string;
   media_url: string;
+  media_type: 'image' | 'video';
   user_id: string;
-  user_email: string;
   created_at: string;
-  comments: Comment[];
-  likes: Memelike[];
+  comments: MemeComment[];
+  likes: MemeLike[];
+  user?: {
+    name: string;
+    avatar_url: string;
+  };
   has_liked?: boolean;
 }
 
-interface Memelike {
-  id: string;
-  meme_id: string;
-  user_id: string;
-  created_at: string;
+interface Message {
+  type: 'success' | 'error';
+  text: string;
 }
 
 // Add type for sorting options
@@ -95,7 +109,7 @@ const FloatingShapes = () => (
 export default function MemesPage() {
   const [memes, setMemes] = useState<Meme[]>([]);
   const [showPostModal, setShowPostModal] = useState(false);
-  const [title, setTitle] = useState('');
+  const [newMemeTitle, setNewMemeTitle] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -105,6 +119,7 @@ export default function MemesPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
+  const [message, setMessage] = useState<Message | null>(null);
 
   useEffect(() => {
     fetchMemes();
@@ -113,30 +128,44 @@ export default function MemesPage() {
 
   const fetchMemes = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) return;
 
-      const { data: memes, error } = await supabase
+      const { data: memesData, error } = await supabase
         .from('memes')
         .select(`
           *,
-          comments:meme_comments(*),
-          likes:meme_likes(*)
+          profiles:user_id(name),
+          likes:meme_likes(user_id),
+          comments:meme_comments(
+            id,
+            content,
+            created_at,
+            user_id,
+            profiles:user_id(name)
+          )
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      // Transform the data to include like count and has_liked status
-      const transformedMemes = (memes || []).map((meme: MemeWithLikes) => ({
-        ...meme,
-        likes: meme.likes?.length || 0,
-        has_liked: meme.likes?.some(like => like.user_id === user.id) || false
-      }));
+      if (memesData) {
+        const formattedMemes = memesData.map((meme: Meme) => ({
+          ...meme,
+          user_name: meme.profiles?.name || 'Anonymous',
+          has_liked: meme.likes?.some((like: { user_id: string }) => like.user_id === currentUser.id) || false,
+          likes_count: meme.likes?.length || 0,
+          comments: meme.comments?.map((comment: any) => ({
+            ...comment,
+            user_name: comment.profiles?.name || 'Anonymous'
+          })) || []
+        }));
 
-      setMemes(transformedMemes);
+        setMemes(formattedMemes);
+      }
     } catch (error) {
       console.error('Error fetching memes:', error);
+      setMessage({ type: 'error', text: 'Failed to load memes' });
     } finally {
       setLoading(false);
     }
@@ -160,41 +189,50 @@ export default function MemesPage() {
     reader.readAsDataURL(file);
   };
 
-  const handlePost = async () => {
+  const handlePostMeme = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !selectedFile) return;
+      if (!user) return;
+
+      if (!selectedFile) {
+        console.log('Please select a meme to upload');
+        return;
+      }
 
       const fileExt = selectedFile.name.split('.').pop();
       const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `memes/${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
 
+      // Upload media
       const { error: uploadError } = await supabase.storage
-        .from('memes')
+        .from('meme_media')
         .upload(filePath, selectedFile);
 
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
-        .from('memes')
+        .from('meme_media')
         .getPublicUrl(filePath);
 
-      const { error } = await supabase.from('memes').insert({
-        title,
-        media_url: publicUrl,
-        user_id: user.id,
-        user_email: user.email
-      });
+      // Create meme entry
+      const { error } = await supabase
+        .from('memes')
+        .insert({
+          title: newMemeTitle,
+          media_url: publicUrl,
+          media_type: selectedFile.type.startsWith('image/') ? 'image' : 'video',
+          user_id: user.id
+        });
 
       if (error) throw error;
 
-      setTitle('');
-      setShowPostModal(false);
+      setNewMemeTitle('');
       setSelectedFile(null);
       setMediaPreview('');
+      setShowPostModal(false);
       fetchMemes();
     } catch (error) {
-      console.error('Error creating meme:', error);
+      console.error('Error posting meme:', error);
     }
   };
 
@@ -233,8 +271,7 @@ export default function MemesPage() {
       const { error } = await supabase.from('meme_comments').insert({
         meme_id: memeId,
         content: newComment,
-        user_id: user.id,
-        user_email: user.email
+        user_id: user.id
       });
 
       if (error) throw error;
@@ -275,8 +312,8 @@ export default function MemesPage() {
         const mediaPath = meme.media_url.split('/').pop();
         if (mediaPath) {
           const { error: storageError } = await supabase.storage
-            .from('memes')
-            .remove([`memes/${mediaPath}`]);
+            .from('meme_media')
+            .remove([`meme_media/${mediaPath}`]);
           
           if (storageError) {
             console.error('Error deleting media:', storageError);
@@ -330,7 +367,7 @@ export default function MemesPage() {
       case 'oldest':
         return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       case 'mostLiked':
-        return (b.likes || 0) - (a.likes || 0);
+        return (b.likes_count || 0) - (a.likes_count || 0);
       default:
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     }
@@ -392,7 +429,7 @@ export default function MemesPage() {
               <div className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-medium">
-                    {meme.user_email[0].toUpperCase()}
+                    {meme.user_name[0].toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-medium text-sm md:text-base truncate">
@@ -418,11 +455,19 @@ export default function MemesPage() {
 
               {/* Meme Image */}
               <div className="relative aspect-square bg-black/20">
-                <img
-                  src={meme.media_url}
-                  alt={meme.title}
-                  className="w-full h-full object-contain"
-                />
+                {meme.media_type === 'video' ? (
+                  <video
+                    src={meme.media_url}
+                    className="w-full h-auto max-h-96 object-cover rounded-lg"
+                    controls
+                  />
+                ) : (
+                  <img
+                    src={meme.media_url}
+                    alt={meme.title}
+                    className="w-full h-auto max-h-96 object-cover rounded-lg"
+                  />
+                )}
               </div>
 
               {/* Meme Actions */}
@@ -439,7 +484,7 @@ export default function MemesPage() {
                       }`}
                     >
                       <Heart className={`w-5 h-5 ${meme.has_liked ? 'fill-current' : ''}`} />
-                      <span className="text-sm">{meme.likes}</span>
+                      <span className="text-sm">{meme.likes_count}</span>
                     </motion.button>
                     <motion.button
                       variants={buttonVariants}
@@ -449,7 +494,7 @@ export default function MemesPage() {
                       className="flex items-center gap-1.5 text-gray-400 hover:text-purple-400"
                     >
                       <MessageSquare className="w-5 h-5" />
-                      <span className="text-sm">{meme.comments?.length || 0}</span>
+                      <span className="text-sm">{meme.comments.length}</span>
                     </motion.button>
                     <motion.button
                       variants={buttonVariants}
@@ -500,7 +545,7 @@ export default function MemesPage() {
                       {meme.comments?.map((comment) => (
                         <div key={comment.id} className="flex items-start gap-2">
                           <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs">
-                            {comment.user_email[0].toUpperCase()}
+                            {comment.user_name[0].toUpperCase()}
                           </div>
                           <div className="flex-1 text-sm">
                             <p className="text-gray-400">{comment.content}</p>
@@ -531,7 +576,7 @@ export default function MemesPage() {
               transition={{ duration: 2, repeat: Infinity }}
               className="inline-block"
             >
-              <Image className="w-12 h-12 text-purple-500 mx-auto mb-4" />
+              <img className="w-12 h-12 text-purple-500 mx-auto mb-4" />
             </motion.div>
             <h3 className="text-lg md:text-xl font-medium mb-2">No Memes Yet</h3>
             <p className="text-gray-400 text-sm md:text-base">
@@ -561,8 +606,8 @@ export default function MemesPage() {
                   <label className="block text-sm font-medium mb-1">Title</label>
                   <input
                     type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
+                    value={newMemeTitle}
+                    onChange={(e) => setNewMemeTitle(e.target.value)}
                     className="w-full bg-white/5 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                     placeholder="Give your meme a title..."
                   />
@@ -573,7 +618,7 @@ export default function MemesPage() {
                   <div className="relative">
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/*, video/*"
                       onChange={handleFileSelect}
                       className="hidden"
                       id="meme-upload"
@@ -590,8 +635,8 @@ export default function MemesPage() {
                         />
                       ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
-                          <Image className="w-6 h-6 mb-1" />
-                          <span className="text-sm">Click to upload an image</span>
+                          <img className="w-6 h-6 mb-1" />
+                          <span className="text-sm">Click to upload an image or video</span>
                         </div>
                       )}
                     </label>
@@ -602,8 +647,8 @@ export default function MemesPage() {
                   variants={buttonVariants}
                   whileHover="hover"
                   whileTap="tap"
-                  onClick={handlePost}
-                  disabled={!title || !selectedFile}
+                  onClick={handlePostMeme}
+                  disabled={!newMemeTitle || !selectedFile}
                   className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:opacity-90 transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Sparkles className="w-4 h-4" />

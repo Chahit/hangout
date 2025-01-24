@@ -69,29 +69,60 @@ interface DashboardStats {
   activeChats: number;
   eventParticipation: number;
   groupEngagement: number;
+  datingMatches: number;
+  pendingConfessions: number;
+  supportResponses: number;
+  memeInteractions: number;
 }
 
 interface Activity {
   id: string;
-  type: 'community' | 'event' | 'message';
+  type: 'community' | 'event' | 'message' | 'dating' | 'confession' | 'meme' | 'support';
   title: string;
   description: string;
   timestamp: string;
+  user?: {
+    name: string;
+    avatar_url: string;
+  };
+  link?: string;
 }
 
 interface Event {
   id: string;
   title: string;
+  description: string;
   start_time: string;
+  end_time: string;
   location: string;
-  participants: number;
+  is_public: boolean;
+  is_approved: boolean;
+  max_participants: number;
+  participants: {
+    user: {
+      id: string;
+      name: string;
+    };
+    status: string;
+  }[];
+  group?: {
+    id: string;
+    name: string;
+  };
 }
 
 interface Group {
   id: string;
   name: string;
-  members: number;
   description: string;
+  members: {
+    user: {
+      id: string;
+      name: string;
+    };
+    role: 'admin' | 'member';
+  }[];
+  events: Event[];
 }
 
 export default function DashboardPage() {
@@ -103,7 +134,11 @@ export default function DashboardPage() {
     totalConnections: 0,
     activeChats: 0,
     eventParticipation: 0,
-    groupEngagement: 0
+    groupEngagement: 0,
+    datingMatches: 0,
+    pendingConfessions: 0,
+    supportResponses: 0,
+    memeInteractions: 0
   });
   const [activities, setActivities] = useState<Activity[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
@@ -138,84 +173,88 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Fetch communities count
-      const { count: groupsCount } = await supabase
-        .from('group_members')
-        .select('*', { count: 'exact' })
-        .eq('user_id', user.id);
+      // Fetch stats
+      const stats = await Promise.all([
+        // Fetch unread messages
+        supabase
+          .from('direct_messages')
+          .select('id', { count: 'exact' })
+          .eq('receiver_id', user.id)
+          .eq('is_read', false),
 
-      // Fetch upcoming events count
-      const { count: eventsCount } = await supabase
-        .from('event_participants')
-        .select('*', { count: 'exact' })
-        .eq('user_id', user.id);
+        // Fetch upcoming events
+        supabase
+          .from('events')
+          .select('id', { count: 'exact' })
+          .gte('start_time', new Date().toISOString())
+          .eq('is_approved', true),
 
-      // Fetch unread messages count
-      const { count: messagesCount } = await supabase
-        .from('messages')
-        .select('*', { count: 'exact' })
-        .eq('to_user_id', user.id)
-        .eq('read', false);
+        // Fetch notifications
+        supabase
+          .from('notifications')
+          .select('id', { count: 'exact' })
+          .eq('user_id', user.id)
+          .eq('is_read', false),
 
-      // Fetch notifications count
-      const { count: notificationsCount } = await supabase
-        .from('notifications')
-        .select('*', { count: 'exact' })
-        .eq('user_id', user.id)
-        .eq('read', false);
+        // Fetch dating matches
+        supabase
+          .from('dating_connections')
+          .select('id', { count: 'exact' })
+          .eq('status', 'accepted')
+          .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`),
 
-      // Fetch total connections (unique users interacted with)
-      const { count: connectionsCount } = await supabase
-        .from('messages')
-        .select('DISTINCT to_user_id', { count: 'exact' })
-        .eq('from_user_id', user.id);
-
-      // Fetch active chats (conversations with messages in last 7 days)
-      const { count: activeChatsCount } = await supabase
-        .from('messages')
-        .select('DISTINCT to_user_id', { count: 'exact' })
-        .eq('from_user_id', user.id)
-        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
-
-      // Fetch event participation rate
-      const { count: totalEvents } = await supabase
-        .from('event_participants')
-        .select('*', { count: 'exact' })
-        .eq('user_id', user.id);
-
-      // Get attended events count
-      const { count: attendedEventsCount } = await supabase
-        .from('event_attendees')
-        .select('*', { count: 'exact' })
-        .eq('user_id', user.id)
-        .eq('status', 'attended');
-
-      // Calculate group engagement (posts/messages in last 30 days)
-      const { count: recentActivity } = await supabase
-        .from('messages')
-        .select('*', { count: 'exact' })
-        .eq('from_user_id', user.id)
-        .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
-
-      const eventParticipation = attendedEventsCount ?? 0;
-      const groupEngagement = (recentActivity || 0) / (totalEvents || 1);
+        // Fetch group memberships
+        supabase
+          .from('group_members')
+          .select('id', { count: 'exact' })
+          .eq('user_id', user.id),
+      ]);
 
       setStats({
-        communities: groupsCount || 0,
-        unreadMessages: messagesCount || 0,
-        upcomingEvents: eventsCount || 0,
-        notifications: notificationsCount || 0,
-        totalConnections: connectionsCount || 0,
-        activeChats: activeChatsCount || 0,
-        eventParticipation,
-        groupEngagement
+        unreadMessages: stats[0].count || 0,
+        upcomingEvents: stats[1].count || 0,
+        notifications: stats[2].count || 0,
+        totalConnections: stats[3].count || 0,
+        communities: stats[4].count || 0,
+        activeChats: 0,
+        eventParticipation: 0,
+        groupEngagement: 0,
+        datingMatches: stats[3].count || 0,
+        pendingConfessions: 0,
+        supportResponses: 0,
+        memeInteractions: 0
       });
+
+      // Fetch recent activities
+      const { data: activities } = await supabase
+        .from('activities')
+        .select(`
+          *,
+          user:profiles(name, avatar_url)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (activities) {
+        setActivities(activities.map(activity => ({
+          ...activity,
+          timestamp: activity.created_at
+        })));
+      }
 
       // Fetch upcoming events
       const { data: events } = await supabase
         .from('events')
-        .select('*')
-        .gt('start_time', new Date().toISOString())
+        .select(`
+          *,
+          participants:event_participants(
+            user:profiles(id, name),
+            status
+          ),
+          group:groups(id, name)
+        `)
+        .gte('start_time', new Date().toISOString())
+        .eq('is_approved', true)
         .order('start_time', { ascending: true })
         .limit(3);
 
@@ -223,40 +262,24 @@ export default function DashboardPage() {
         setUpcomingEvents(events);
       }
 
-      // Fetch suggested groups
+      // Fetch user's groups
       const { data: groups } = await supabase
         .from('groups')
-        .select('*')
+        .select(`
+          *,
+          members:group_members(
+            user:profiles(id, name),
+            role
+          ),
+          events(*)
+        `)
+        .order('created_at', { ascending: false })
         .limit(3);
 
       if (groups) {
         setSuggestedGroups(groups);
       }
 
-      // Fetch recent activities
-      const activities: Activity[] = [];
-      
-      // Fetch community activities
-      const { data: groupActivities } = await supabase
-        .from('group_members')
-        .select('groups(name, created_at)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (groupActivities) {
-        groupActivities.forEach((activity: any) => {
-          activities.push({
-            id: Math.random().toString(),
-            type: 'community',
-            title: 'New Community Joined',
-            description: `You joined ${activity.groups.name}`,
-            timestamp: activity.groups.created_at
-          });
-        });
-      }
-
-      setActivities(activities);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -273,7 +296,7 @@ export default function DashboardPage() {
         .from('notifications')
         .select('*', { count: 'exact' })
         .eq('user_id', user.id)
-        .eq('read', false);
+        .eq('is_read', false);
 
       setNotificationCount(count || 0);
     } catch (error) {
@@ -289,9 +312,9 @@ export default function DashboardPage() {
       // Mark all notifications as read
       await supabase
         .from('notifications')
-        .update({ read: true })
+        .update({ is_read: true })
         .eq('user_id', user.id)
-        .eq('read', false);
+        .eq('is_read', false);
 
       setNotificationCount(0);
     } catch (error) {
@@ -620,3 +643,46 @@ export default function DashboardPage() {
     </div>
   );
 } 
+
+// Add notification badge component
+const NotificationBadge = ({ count }: { count: number }) => (
+  count > 0 ? (
+    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+      {count > 9 ? '9+' : count}
+    </span>
+  ) : null
+);
+
+// Add activity card component
+const ActivityCard = ({ activity }: { activity: Activity }) => (
+  <motion.div
+    variants={cardVariants}
+    initial="hidden"
+    animate="visible"
+    whileHover="hover"
+    className="bg-white/5 backdrop-blur-sm rounded-xl p-4 relative"
+  >
+    <div className="flex items-start gap-3">
+      {activity.user?.avatar_url && (
+        <img
+          src={activity.user.avatar_url}
+          alt={activity.user.name}
+          className="w-10 h-10 rounded-full"
+        />
+      )}
+      <div className="flex-1">
+        <h3 className="font-medium text-sm">{activity.title}</h3>
+        <p className="text-sm text-gray-400">{activity.description}</p>
+        <span className="text-xs text-gray-500">
+          {format(new Date(activity.timestamp), 'MMM d, h:mm a')}
+        </span>
+      </div>
+    </div>
+    {activity.link && (
+      <Link
+        href={activity.link}
+        className="absolute inset-0 rounded-xl hover:bg-white/5 transition-colors"
+      />
+    )}
+  </motion.div>
+);

@@ -9,9 +9,26 @@ interface Profile {
   id: string;
   name: string;
   email: string;
+  avatar_url?: string;
   batch: string;
   branch: string;
   interests: string[];
+  online_status: boolean;
+  last_seen: string;
+  notification_preferences: {
+    email_notifications: boolean;
+    dating_notifications: boolean;
+    group_notifications: boolean;
+    event_notifications: boolean;
+    support_notifications: boolean;
+  };
+  privacy_settings: {
+    show_online_status: boolean;
+    show_last_seen: boolean;
+    show_email: boolean;
+    show_batch: boolean;
+    show_branch: boolean;
+  };
 }
 
 const BRANCHES = [
@@ -101,6 +118,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -119,7 +137,25 @@ export default function SettingsPage() {
         .single();
 
       if (error) throw error;
-      setProfile(profile);
+
+      // Set default values if not present
+      setProfile({
+        ...profile,
+        notification_preferences: profile.notification_preferences || {
+          email_notifications: true,
+          dating_notifications: true,
+          group_notifications: true,
+          event_notifications: true,
+          support_notifications: true
+        },
+        privacy_settings: profile.privacy_settings || {
+          show_online_status: true,
+          show_last_seen: true,
+          show_email: true,
+          show_batch: true,
+          show_branch: true
+        }
+      });
     } catch (error) {
       console.error('Error fetching profile:', error);
     } finally {
@@ -127,27 +163,50 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!profile) return;
-
-    setSaving(true);
-    setMessage(null);
-
+  const updateProfile = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      setSaving(true);
+
+      // Handle avatar upload if present
+      let avatarUrl = profile?.avatar_url;
+      if (selectedFile) {
+        const fileExt = selectedFile.name.split('.').pop();
+        const fileName = `${user.id}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, selectedFile, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(fileName);
+
+        avatarUrl = publicUrl;
+      }
+
       const { error } = await supabase
         .from('profiles')
-        .update({
-          name: profile.name,
-          batch: profile.batch,
-          branch: profile.branch,
-          interests: profile.interests,
+        .upsert({
+          id: user.id,
+          name: profile?.name,
+          email: profile?.email,
+          avatar_url: avatarUrl,
+          batch: profile?.batch,
+          branch: profile?.branch,
+          interests: profile?.interests,
+          notification_preferences: profile?.notification_preferences,
+          privacy_settings: profile?.privacy_settings,
           updated_at: new Date().toISOString()
-        })
-        .eq('id', profile.id);
+        });
 
       if (error) throw error;
 
+      setSelectedFile(null);
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -174,6 +233,30 @@ export default function SettingsPage() {
     setProfile({
       ...profile,
       branch
+    });
+  };
+
+  const handleNotificationPreferenceChange = (key: string, value: boolean) => {
+    if (!profile) return;
+    
+    setProfile({
+      ...profile,
+      notification_preferences: {
+        ...profile.notification_preferences,
+        [key]: value
+      }
+    });
+  };
+
+  const handlePrivacySettingChange = (key: string, value: boolean) => {
+    if (!profile) return;
+    
+    setProfile({
+      ...profile,
+      privacy_settings: {
+        ...profile.privacy_settings,
+        [key]: value
+      }
     });
   };
 
@@ -212,7 +295,10 @@ export default function SettingsPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
-          onSubmit={handleSubmit}
+          onSubmit={(e) => {
+            e.preventDefault();
+            updateProfile();
+          }}
           className="glass-morphism p-4 md:p-6 rounded-xl space-y-4 md:space-y-6"
         >
           <div className="space-y-4 md:space-y-6">
@@ -291,6 +377,9 @@ export default function SettingsPage() {
               />
               <p className="text-xs md:text-sm text-gray-400 mt-1.5 md:mt-2 ml-6">Separate interests with commas</p>
             </div>
+
+            <NotificationSettings profile={profile} onChange={handleNotificationPreferenceChange} />
+            <PrivacySettings profile={profile} onChange={handlePrivacySettingChange} />
           </div>
 
           {message && (
@@ -331,4 +420,56 @@ export default function SettingsPage() {
       </div>
     </div>
   );
-} 
+}
+
+interface NotificationSettingsProps {
+  profile: Profile | null;
+  onChange: (key: string, value: boolean) => void;
+}
+
+const NotificationSettings = ({ profile, onChange }: NotificationSettingsProps) => (
+  <div className="space-y-4">
+    <h3 className="text-lg font-medium">Notification Preferences</h3>
+    <div className="space-y-2">
+      {Object.entries(profile?.notification_preferences || {}).map(([key, value]) => (
+        <div key={key} className="flex items-center justify-between">
+          <label className="text-sm">
+            {key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+          </label>
+          <input
+            type="checkbox"
+            checked={value}
+            onChange={(e) => onChange(key, e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+          />
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+interface PrivacySettingsProps {
+  profile: Profile | null;
+  onChange: (key: string, value: boolean) => void;
+}
+
+const PrivacySettings = ({ profile, onChange }: PrivacySettingsProps) => (
+  <div className="space-y-4">
+    <h3 className="text-lg font-medium">Privacy Settings</h3>
+    <div className="space-y-2">
+      {Object.entries(profile?.privacy_settings || {}).map(([key, value]) => (
+        <div key={key} className="flex items-center justify-between">
+          <label className="text-sm">
+            {key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+          </label>
+          <input
+            type="checkbox"
+            checked={value}
+            onChange={(e) => onChange(key, e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+          />
+        </div>
+      ))}
+    </div>
+  </div>
+);

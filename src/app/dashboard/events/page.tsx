@@ -8,45 +8,43 @@ import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import Modal from '@/components/shared/Modal';
 
-type Event = {
+interface Event {
   id: string;
   title: string;
   description: string;
-  location: string;
   start_time: string;
   end_time: string;
-  created_by: string;
-  group_id: string | null;
-  is_public: boolean;
-  max_participants: number | null;
+  location: string;
   created_at: string;
+  user_id: string;
+  media_url?: string;
+  is_public: boolean;
   is_approved: boolean;
-  group?: {
-    name: string;
-  };
-  creator?: {
-    id: string;
-    name: string;
-  };
-  participants?: {
-    status: string;
+  max_participants: number;
+  created_by: string;
+  group_id?: string;
+  participants: Array<{
+    user_id: string;
     user: {
       id: string;
       name: string;
     };
-  }[];
-};
+    status: 'pending' | 'accepted' | 'declined';
+  }>;
+  group?: {
+    id: string;
+    name: string;
+  };
+}
 
-// Add type definitions at the top of the file
-type GroupMember = {
+interface GroupMember {
   group: {
     id: string;
     name: string;
   } | null;
-};
+}
 
-// Add type definition at the top of the file
-type GroupMemberResponse = {
+interface GroupMemberResponse {
   group_id: string;
   groups: {
     id: string;
@@ -54,7 +52,6 @@ type GroupMemberResponse = {
   };
 }
 
-// Animation variants
 const cardVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
@@ -66,7 +63,6 @@ const buttonVariants = {
   tap: { scale: 0.98 }
 };
 
-// Floating background shapes component
 const FloatingShapes = () => (
   <div className="fixed inset-0 -z-10 overflow-hidden">
     <motion.div
@@ -98,7 +94,6 @@ const FloatingShapes = () => (
   </div>
 );
 
-// Enhanced loading component with purple gradient shimmer
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center min-h-[200px] relative">
     <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-transparent animate-shimmer" />
@@ -117,6 +112,31 @@ const LoadingSpinner = () => (
   </div>
 );
 
+const handleParticipantUpdate = (prevEvents: Event[], eventId: string, userId: string, newParticipant: Event['participants'][0]) => {
+  return prevEvents.map(event => {
+    if (event.id === eventId) {
+      const updatedParticipants = [...(event.participants || [])];
+      const participantIndex = updatedParticipants.findIndex((participant: Event['participants'][0]) => participant.user_id === userId);
+      
+      if (participantIndex >= 0) {
+        updatedParticipants[participantIndex] = newParticipant;
+      } else {
+        updatedParticipants.push(newParticipant);
+      }
+      
+      return {
+        ...event,
+        participants: updatedParticipants
+      };
+    }
+    return event;
+  });
+};
+
+const isParticipant = (event: Event, userId: string): boolean => {
+  return event.participants.some((p: Event['participants'][0]) => p.user_id === userId);
+};
+
 export default function EventsPage() {
   const supabase = createClientComponentClient();
   const [events, setEvents] = useState<Event[]>([]);
@@ -131,10 +151,12 @@ export default function EventsPage() {
     start_time: '',
     end_time: '',
     is_public: true,
-    max_participants: '',
+    max_participants: 0,
     group_id: '',
   });
   const [userGroups, setUserGroups] = useState<{ id: string; name: string; }[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'mostLiked'>('newest');
 
   useEffect(() => {
     checkAdminStatus();
@@ -155,39 +177,169 @@ export default function EventsPage() {
 
   const fetchEvents = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      let query = supabase
+      const { data: events, error } = await supabase
         .from('events')
         .select(`
           *,
-          group:groups(name),
-          creator:profiles!events_created_by_fkey(id, name),
           participants:event_participants(
-            status,
-            user:profiles!event_participants_user_id_fkey(id, name)
-          )
+            user:profiles(id, name),
+            status
+          ),
+          group:groups(id, name)
         `)
+        .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true });
 
-      // If user is admin and viewing pending events
-      if (isAdmin && activeTab === 'pending') {
-        query = query.eq('is_approved', false);
-      } else {
-        // For regular users or admin viewing approved events
-        query = query.eq('is_approved', true);
-      }
-
-      const { data: events, error } = await query;
-
       if (error) throw error;
-      setEvents(events || []);
+
+      // Filter events based on visibility and approval
+      const filteredEvents = events.filter(event => {
+        if (event.created_by === user.id) return true;
+        if (!event.is_approved) return false;
+        if (event.is_public) return true;
+        if (event.group_id) {
+          return event.participants.some((p: Event['participants'][0]) => 
+            p.user.id === user.id && p.status === 'accepted'
+          );
+        }
+        return false;
+      });
+
+      setEvents(filteredEvents);
     } catch (error) {
       console.error('Error fetching events:', error);
-      setEvents([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const createEvent = async (eventData: Partial<Event>) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      // Upload media if present
+      let mediaUrl;
+      if (selectedFile) {
+        const fileExt = selectedFile.name.split('.').pop();
+        const fileName = `${session.user.id}_${Date.now()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('event-media')
+          .upload(fileName, selectedFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('event-media')
+          .getPublicUrl(fileName);
+
+        mediaUrl = publicUrl;
+      }
+
+      const { data: event, error } = await supabase
+        .from('events')
+        .insert({
+          ...eventData,
+          user_id: session.user.id,
+          created_by: session.user.id,
+          group_id: eventData.group_id || null,
+          is_public: true,
+          is_approved: true,
+          max_participants: 50,
+          participants: []
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Add creator as first participant
+      const { error: participantError } = await supabase
+        .from('event_participants')
+        .insert({
+          event_id: event.id,
+          user_id: session.user.id,
+          status: 'accepted'
+        });
+
+      if (participantError) throw participantError;
+
+      setEvents(prev => [...prev, event]);
+      setShowCreateModal(false);
+      setSelectedFile(null);
+    } catch (error) {
+      console.error('Error creating event:', error);
+    }
+  };
+
+  const handleJoinEvent = async (eventId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('id', session.user.id)
+        .single();
+
+      if (!userProfile) return;
+
+      const newParticipant = {
+        user_id: session.user.id,
+        user: {
+          id: session.user.id,
+          name: userProfile.name,
+        },
+        status: 'accepted' as const
+      };
+
+      setEvents(prev => handleParticipantUpdate(prev, eventId, session.user.id, newParticipant));
+
+      const { error } = await supabase
+        .from('event_participants')
+        .insert({
+          event_id: eventId,
+          user_id: session.user.id,
+          status: 'accepted'
+        });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error joining event:', error);
+    }
+  };
+
+  const respondToParticipant = async (eventId: string, userId: string, status: 'accepted' | 'declined') => {
+    try {
+      const { error } = await supabase
+        .from('event_participants')
+        .update({ status })
+        .match({ event_id: eventId, user_id: userId });
+
+      if (error) throw error;
+
+      // Update local state
+      setEvents(prev => prev.map(event => {
+        if (event.id === eventId) {
+          return {
+            ...event,
+            participants: event.participants.map(p => {
+              if (p.user.id === userId) {
+                return { ...p, status };
+              }
+              return p;
+            })
+          };
+        }
+        return event;
+      }));
+    } catch (error) {
+      console.error('Error responding to participant:', error);
     }
   };
 
@@ -216,82 +368,14 @@ export default function EventsPage() {
     }
   };
 
-  const handleCreateEvent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
-
-      const { error } = await supabase.from('events').insert({
-        ...newEvent,
-        created_by: session.user.id,
-        max_participants: newEvent.max_participants ? parseInt(newEvent.max_participants) : null,
-        group_id: newEvent.group_id || null,
-        is_approved: session.user.email === 'cl883@snu.edu.in', // Auto-approve if admin
-      });
-
-      if (error) throw error;
-
-      setShowCreateModal(false);
-      setNewEvent({
-        title: '',
-        description: '',
-        location: '',
-        start_time: '',
-        end_time: '',
-        is_public: true,
-        max_participants: '',
-        group_id: '',
-      });
-      fetchEvents();
-    } catch (error) {
-      console.error('Error creating event:', error);
-    }
-  };
-
-  const handleJoinEvent = async (eventId: string) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
-
-      const { error } = await supabase.from('event_participants').insert({
-        event_id: eventId,
-        user_id: session.user.id,
-        status: 'going',
-      });
-
-      if (error) throw error;
-      fetchEvents();
-    } catch (error) {
-      console.error('Error joining event:', error);
-    }
-  };
-
-  const handleApproveEvent = async (eventId: string) => {
-    try {
-      const { error } = await supabase
-        .from('events')
-        .update({ is_approved: true })
-        .eq('id', eventId);
-
-      if (error) throw error;
-      fetchEvents();
-    } catch (error) {
-      console.error('Error approving event:', error);
-    }
-  };
-
-  const handleRemoveEvent = async (eventId: string) => {
-    try {
-      const { error } = await supabase
-        .from('events')
-        .delete()
-        .eq('id', eventId);
-
-      if (error) throw error;
-      fetchEvents();
-    } catch (error) {
-      console.error('Error removing event:', error);
+  const sortEvents = (a: Event, b: Event): number => {
+    switch (sortBy) {
+      case 'oldest':
+        return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
+      case 'mostLiked':
+        return (b.participants?.length || 0) - (a.participants?.length || 0);
+      default:
+        return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
     }
   };
 
@@ -367,7 +451,7 @@ export default function EventsPage() {
 
         {/* Events Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-          {events.map((event, index) => (
+          {events.sort(sortEvents).map((event, index) => (
             <motion.div
               key={event.id}
               variants={cardVariants}
@@ -439,7 +523,7 @@ export default function EventsPage() {
                         variants={buttonVariants}
                         whileHover="hover"
                         whileTap="tap"
-                        onClick={() => handleApproveEvent(event.id)}
+                        onClick={() => respondToParticipant(event.id, event.participants[0].user.id, 'accepted')}
                         className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 transition-colors"
                       >
                         Approve
@@ -448,10 +532,10 @@ export default function EventsPage() {
                         variants={buttonVariants}
                         whileHover="hover"
                         whileTap="tap"
-                        onClick={() => handleRemoveEvent(event.id)}
+                        onClick={() => respondToParticipant(event.id, event.participants[0].user.id, 'declined')}
                         className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
                       >
-                        Remove
+                        Decline
                       </motion.button>
                     </>
                   ) : isAdmin ? (
@@ -459,10 +543,10 @@ export default function EventsPage() {
                       variants={buttonVariants}
                       whileHover="hover"
                       whileTap="tap"
-                      onClick={() => handleRemoveEvent(event.id)}
+                      onClick={() => respondToParticipant(event.id, event.participants[0].user.id, 'declined')}
                       className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
                     >
-                      Remove
+                      Decline
                     </motion.button>
                   ) : (
                     <motion.button
@@ -470,7 +554,7 @@ export default function EventsPage() {
                       whileHover="hover"
                       whileTap="tap"
                       onClick={() => handleJoinEvent(event.id)}
-                      disabled={event.participants?.some(p => p.user.id === event.creator?.id)}
+                      disabled={isParticipant(event, event.created_by)}
                       className="px-4 py-1.5 bg-purple-500 text-white text-sm rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Join Event
@@ -478,6 +562,11 @@ export default function EventsPage() {
                   )}
                 </div>
               </div>
+              {!event.is_approved && (
+                <div className="absolute top-2 right-2 bg-yellow-500/20 text-yellow-500 px-2 py-1 rounded-lg text-xs">
+                  Pending Approval
+                </div>
+              )}
             </motion.div>
           ))}
         </div>
@@ -528,7 +617,7 @@ export default function EventsPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleCreateEvent} className="space-y-3">
+              <form onSubmit={(e) => createEvent(newEvent)} className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium mb-1">Title</label>
                   <input
@@ -606,7 +695,7 @@ export default function EventsPage() {
                     <input
                       type="number"
                       value={newEvent.max_participants}
-                      onChange={(e) => setNewEvent({ ...newEvent, max_participants: e.target.value })}
+                      onChange={(e) => setNewEvent({ ...newEvent, max_participants: parseInt(e.target.value) })}
                       className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                       placeholder="Optional"
                       min="1"
@@ -641,4 +730,4 @@ export default function EventsPage() {
       </div>
     </div>
   );
-} 
+}
