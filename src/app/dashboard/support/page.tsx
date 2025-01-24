@@ -1,13 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { MessageCircle, Plus, Tag, ThumbsUp, User, Search, X, Sparkles, ArrowRight, Clock, MessageSquare } from 'lucide-react';
-import Link from 'next/link';
+import { 
+  MessageCircle, 
+  Plus, 
+  Tag, 
+  ThumbsUp, 
+  User, 
+  Search,
+  X,
+  Sparkles,
+  ArrowRight,
+  Clock,
+  MessageSquare
+} from 'lucide-react';
 import { format } from 'date-fns';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Modal from '@/components/shared/Modal';
-import Image from 'next/image';
+import FloatingShapes from '../components/FloatingShapes';
 
 interface SupportPost {
   id: string;
@@ -39,6 +50,10 @@ interface SupportResponse {
   };
 }
 
+interface User {
+  id: string;
+}
+
 const CATEGORIES = [
   'Academic',
   'Mental Health',
@@ -48,7 +63,6 @@ const CATEGORIES = [
   'Other'
 ];
 
-// Animation variants
 const cardVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
@@ -61,41 +75,9 @@ const buttonVariants = {
   tap: { scale: 0.98 }
 };
 
-// Floating background shapes component
-const FloatingShapes = () => (
-  <div className="fixed inset-0 -z-10 overflow-hidden">
-    <motion.div
-      className="absolute w-72 h-72 bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-full blur-3xl"
-      animate={{
-        x: [0, 100, 0],
-        y: [0, 50, 0],
-      }}
-      transition={{
-        duration: 20,
-        repeat: Infinity,
-        ease: "linear"
-      }}
-      style={{ top: '10%', left: '20%' }}
-    />
-    <motion.div
-      className="absolute w-96 h-96 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-full blur-3xl"
-      animate={{
-        x: [0, -70, 0],
-        y: [0, 100, 0],
-      }}
-      transition={{
-        duration: 25,
-        repeat: Infinity,
-        ease: "linear"
-      }}
-      style={{ top: '40%', right: '10%' }}
-    />
-  </div>
-);
-
 export default function SupportPage() {
   const supabase = createClientComponentClient();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<SupportPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -112,32 +94,7 @@ export default function SupportPage() {
     is_anonymous: false
   });
 
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-    };
-    getUser();
-  }, []);
-
-  useEffect(() => {
-    fetchPosts();
-  }, [selectedCategory, sortBy]);
-
-  const sortPosts = (posts: SupportPost[]): SupportPost[] => {
-    return [...posts].sort((a: SupportPost, b: SupportPost): number => {
-      switch (sortBy) {
-        case 'oldest':
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        case 'mostResponses':
-          return ((b.support_responses?.length || 0) - (a.support_responses?.length || 0));
-        default: // 'newest'
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }
-    });
-  };
-
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
     try {
       if (!user) return;
 
@@ -173,12 +130,37 @@ export default function SupportPage() {
           )
       }));
 
-      setPosts(sortPosts(transformedPosts));
+      setPosts(transformedPosts);
     } catch (error) {
       console.error('Error fetching posts:', error);
     } finally {
       setLoading(false);
     }
+  }, [user, selectedCategory, supabase]);
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getUser();
+  }, [supabase.auth]);
+
+  useEffect(() => {
+    fetchPosts();
+  }, [fetchPosts]);
+
+  const sortPosts = (posts: SupportPost[]): SupportPost[] => {
+    return [...posts].sort((a: SupportPost, b: SupportPost): number => {
+      switch (sortBy) {
+        case 'oldest':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'mostResponses':
+          return ((b.support_responses?.length || 0) - (a.support_responses?.length || 0));
+        default: // 'newest'
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+    });
   };
 
   const handleCreatePost = async () => {
@@ -300,12 +282,10 @@ export default function SupportPage() {
       <div className="min-h-screen w-full relative font-cabinet-grotesk">
         <FloatingShapes />
         <div className="p-4 md:p-6 max-w-4xl mx-auto">
-          <div className="animate-pulse space-y-4 md:space-y-6">
-            <div className="h-12 bg-white/5 rounded-xl w-1/3" />
-            <div className="space-y-3 md:space-y-4">
-              <div className="h-48 bg-white/5 rounded-xl" />
-              <div className="h-48 bg-white/5 rounded-xl" />
-            </div>
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 bg-gray-800 rounded w-1/4"></div>
+            <div className="h-4 bg-gray-800 rounded w-1/2"></div>
+            <div className="h-64 bg-gray-800 rounded"></div>
           </div>
         </div>
       </div>
@@ -321,7 +301,7 @@ export default function SupportPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-clash-display font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-purple-600 text-transparent bg-clip-text">
-              Peer Support ✨
+              Peer Support 
             </h1>
             <p className="text-sm md:text-base text-gray-400 mt-1">
               Connect, share, and support each other through challenges
@@ -342,10 +322,10 @@ export default function SupportPage() {
               whileHover="hover"
               whileTap="tap"
               onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg hover:opacity-90 transition-colors flex items-center gap-2"
+              className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
             >
               <Plus className="w-4 h-4" />
-              Ask for Help
+              New Post
             </motion.button>
           </div>
         </div>
@@ -367,7 +347,6 @@ export default function SupportPage() {
           {/* Category Filters */}
           <div className="flex flex-wrap gap-2">
             <motion.button
-              variants={buttonVariants}
               whileHover="hover"
               whileTap="tap"
               onClick={() => setSelectedCategory('')}
@@ -380,7 +359,6 @@ export default function SupportPage() {
             {CATEGORIES.map(category => (
               <motion.button
                 key={category}
-                variants={buttonVariants}
                 whileHover="hover"
                 whileTap="tap"
                 onClick={() => setSelectedCategory(category)}
@@ -501,7 +479,6 @@ export default function SupportPage() {
         {/* Empty State */}
         {posts.length === 0 && (
           <motion.div
-            variants={cardVariants}
             initial="hidden"
             animate="visible"
             className="text-center py-12"
@@ -593,7 +570,8 @@ export default function SupportPage() {
                   whileHover="hover"
                   whileTap="tap"
                   type="submit"
-                  className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition-all text-sm md:text-base flex items-center justify-center gap-2"
+                  className="w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                  disabled={!newPost.title.trim() || !newPost.content.trim() || !newPost.category}
                 >
                   <Sparkles className="w-4 h-4" />
                   Create Post
