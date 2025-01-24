@@ -19,9 +19,11 @@ interface DatingProfile {
   updated_at: string;
 }
 
+type SupabaseClient = ReturnType<typeof createClientComponentClient<Database>>;
+
 export default function DatingPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient<Database>();
+  const supabase: SupabaseClient = createClientComponentClient<Database>();
   const [profile, setProfile] = useState<DatingProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -102,7 +104,7 @@ export default function DatingPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-md mx-auto bg-white/5 p-8 rounded-xl backdrop-blur-lg">
           <h2 className="text-2xl font-bold mb-6 text-white">Welcome to Dating!</h2>
-          <p className="mb-6 text-gray-300">Let{"'"}s start by knowing a bit about you.</p>
+          <p className="mb-6 text-gray-300">Let&apos;s start by knowing a bit about you.</p>
           <div className="space-y-4">
             <button
               onClick={() => createProfile('male', 'female')}

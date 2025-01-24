@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { Send, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -36,7 +36,6 @@ type GroupInfo = {
 
 export default function GroupChatPage() {
   const params = useParams();
-  const router = useRouter();
   const supabase = createClientComponentClient();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -49,24 +48,6 @@ export default function GroupChatPage() {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-  const fetchUserForMessage = useCallback(async (message: Message) => {
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('name')
-      .eq('id', message.user_id)
-      .single();
-
-    if (error) {
-      console.error('Error fetching user profile:', error);
-      return message;
-    }
-
-    return {
-      ...message,
-      user: profile
-    };
-  }, [supabase]);
 
   const fetchMessages = useCallback(async () => {
     try {
@@ -99,9 +80,9 @@ export default function GroupChatPage() {
       const { id, email } = session.user;
       setUser({ id, email: email || undefined });
     } else {
-      router.push('/auth');
+      // Removed router.push('/auth');
     }
-  }, [supabase, router]);
+  }, [supabase]);
 
   const fetchGroupInfo = useCallback(async () => {
     try {

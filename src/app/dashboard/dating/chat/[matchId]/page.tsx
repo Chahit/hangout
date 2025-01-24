@@ -125,15 +125,33 @@ export default function ChatPage() {
   }, [supabase, matchId]);
 
   useEffect(() => {
+    fetchMessages();
+    const channel = supabase
+      .channel(`match_${matchId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'dating_messages',
+        filter: `match_id=eq.${matchId}`,
+      }, () => {
+        fetchMessages();
+      })
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [matchId, supabase, fetchMessages]);
+
+  useEffect(() => {
     const setup = async () => {
       await Promise.all([
         fetchMatchInfo(),
-        fetchMessages()
       ]);
       handleNewMessage();
     };
     setup();
-  }, [fetchMatchInfo, fetchMessages, handleNewMessage]);
+  }, [fetchMatchInfo, handleNewMessage]);
 
   useEffect(() => {
     const getUser = async () => {

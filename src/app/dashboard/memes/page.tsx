@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Heart, Send, Plus, ArrowUpDown } from 'lucide-react';
+import { Plus, ArrowUpDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
@@ -15,11 +15,9 @@ interface Meme {
   media_type: 'image' | 'video';
   created_at: string;
   user_id: string;
-  has_liked: boolean;
-  likes_count: number;
-  comments: MemeComment[];
   user_name: string;
   likes?: Array<{ user_id: string }>;
+  comments: MemeComment[];
   profiles?: { name: string };
 }
 
@@ -42,24 +40,13 @@ interface MemeLike {
   created_at: string;
 }
 
-interface MemeWithLikes {
-  id: string;
-  title: string;
-  media_url: string;
-  media_type: string;
-  user_id: string;
-  created_at: string;
+interface MemeWithLikes extends Meme {
+  has_liked: boolean;
   likes_count: number;
-  user_name: string;
+  likes: MemeLike[];
 }
 
-interface Message {
-  type: 'success' | 'error';
-  text: string;
-}
-
-// Add type for sorting options
-type SortOption = 'newest' | 'mostLiked';
+type SortOption = 'newest' | 'oldest' | 'mostLiked';
 
 // Animation variants
 const cardVariants = {
@@ -109,7 +96,7 @@ export default function MemesPage() {
   const [memes, setMemes] = useState<MemeWithLikes[]>([]);
   const [showPostModal, setShowPostModal] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [sortBy, setSortBy] = useState<'newest' | 'mostLiked'>('newest');
+  const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
   const supabase = createClientComponentClient();
 
@@ -130,7 +117,11 @@ export default function MemesPage() {
         .select(`
           *,
           profiles:user_id(name),
-          likes:meme_likes(user_id),
+          likes:meme_likes(
+            id,
+            user_id,
+            created_at
+          ),
           comments:meme_comments(
             id,
             content,
@@ -144,12 +135,13 @@ export default function MemesPage() {
       if (error) throw error;
 
       if (memesData) {
-        const formattedMemes = memesData.map((meme: Meme) => ({
+        const formattedMemes: MemeWithLikes[] = memesData.map((meme) => ({
           ...meme,
           user_name: meme.profiles?.name || 'Anonymous',
-          has_liked: meme.likes?.some(like => like.user_id === currentUser.id) || false,
+          has_liked: meme.likes?.some((like: { user_id: string }) => like.user_id === currentUser.id) || false,
           likes_count: meme.likes?.length || 0,
-          comments: meme.comments?.map(comment => ({
+          likes: meme.likes || [],
+          comments: meme.comments?.map((comment: MemeComment) => ({
             ...comment,
             user_name: comment.profiles?.name || 'Anonymous'
           })) || []
@@ -162,7 +154,7 @@ export default function MemesPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, currentUser]);
+  }, [currentUser, supabase]);
 
   useEffect(() => {
     getCurrentUser();
@@ -194,7 +186,9 @@ export default function MemesPage() {
   const sortedMemes = [...memes].sort((a, b) => {
     switch (sortBy) {
       case 'mostLiked':
-        return (b.likes_count || 0) - (a.likes_count || 0);
+        return (b.likes.length || 0) - (a.likes.length || 0);
+      case 'oldest':
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       default:
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     }

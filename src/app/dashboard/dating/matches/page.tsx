@@ -31,7 +31,6 @@ export default function MatchesPage() {
   const supabase = createClientComponentClient<Database>();
   const [matches, setMatches] = useState<DatingProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<DatingProfile | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const fetchMatches = useCallback(async () => {
@@ -58,7 +57,6 @@ export default function MatchesPage() {
         .single();
 
       if (profileError) throw profileError;
-      setUserProfile(myProfile);
 
       // Get potential matches based on gender preference
       const { data: potentialMatches, error: matchesError } = await supabase

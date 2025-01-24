@@ -211,25 +211,6 @@ export default function SupportPage() {
     }
   };
 
-  const handleAcceptResponse = useCallback(async (postId: string, responseId: string) => {
-    try {
-      if (!user) return;
-
-      const post = posts.find(p => p.id === postId);
-      if (!post || post.created_by !== user.id) return;
-
-      const { error } = await supabase
-        .from('support_responses')
-        .update({ is_accepted: true })
-        .eq('id', responseId);
-
-      if (error) throw error;
-      fetchPosts();
-    } catch (error) {
-      console.error('Error accepting response:', error);
-    }
-  }, [user, posts, supabase, fetchPosts]);
-
   const handleDeletePost = async (postId: string) => {
     try {
       if (!user) return;

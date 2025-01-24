@@ -8,9 +8,9 @@ import {
 } from "lucide-react";
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
+import Image from 'next/image';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
-import Image from 'next/image';
 import ActivityTrends from './components/ActivityTrends';
 
 // Animation variants
@@ -119,6 +119,7 @@ interface Group {
 }
 
 export default function DashboardPage() {
+  const supabase = createClientComponentClient();
   const [stats, setStats] = useState<DashboardStats>({
     communities: 0,
     unreadMessages: 0,
@@ -137,7 +138,6 @@ export default function DashboardPage() {
   const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
   const [suggestedGroups, setSuggestedGroups] = useState<Group[]>([]);
   const [notificationCount, setNotificationCount] = useState(0);
-  const supabase = createClientComponentClient();
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -578,10 +578,12 @@ const ActivityCard = ({ activity }: { activity: Activity }) => (
   >
     <div className="flex items-start gap-3">
       {activity.user?.avatar_url && (
-        <img
+        <Image
           src={activity.user.avatar_url}
           alt={activity.user.name}
-          className="w-10 h-10 rounded-full"
+          width={40}
+          height={40}
+          className="rounded-full"
         />
       )}
       <div className="flex-1">

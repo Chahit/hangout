@@ -59,14 +59,14 @@ export default function SupportPostPage() {
         .from('support_posts')
         .select(`
           *,
-          creator:profiles!support_posts_created_by_fkey(name, email),
-          responses:support_responses(
+          creator:created_by(name, email),
+          responses(
             id,
             content,
             is_anonymous,
             is_accepted,
             created_at,
-            creator:profiles!support_responses_created_by_fkey(name, email)
+            creator:created_by(name, email)
           )
         `)
         .eq('id', id)
@@ -75,12 +75,11 @@ export default function SupportPostPage() {
       if (error) throw error;
       setPost(post);
     } catch (error) {
-      console.error('Error fetching support post:', error);
-      router.push('/dashboard/support');
+      console.error('Error fetching post:', error);
     } finally {
       setLoading(false);
     }
-  }, [supabase, id, router]);
+  }, [supabase, id]);
 
   useEffect(() => {
     fetchPost();

@@ -8,13 +8,6 @@ import { useRouter } from 'next/navigation';
 import type { Database } from '@/lib/database.types';
 import { Loader2 } from 'lucide-react';
 
-interface DatingProfile {
-  id: string;
-  user_id: string;
-  answers: Record<string, string>;
-  has_completed_profile: boolean;
-}
-
 export default function ProfilePage() {
   const router = useRouter();
   const supabase = createClientComponentClient<Database>();

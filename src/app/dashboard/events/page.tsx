@@ -149,7 +149,6 @@ export default function EventsPage() {
   });
   const [userGroups, setUserGroups] = useState<Array<{ id: string; name: string; }>>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'mostLiked'>('newest');
 
   const checkAdminStatus = useCallback(async () => {
     try {
@@ -233,17 +232,6 @@ export default function EventsPage() {
     fetchEvents();
     fetchUserGroups();
   }, [checkAdminStatus, fetchEvents, fetchUserGroups, activeTab]);
-
-  const sortEvents = useCallback((a: Event, b: Event): number => {
-    switch (sortBy) {
-      case 'oldest':
-        return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
-      case 'mostLiked':
-        return (b.participants?.length || 0) - (a.participants?.length || 0);
-      default:
-        return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
-    }
-  }, [sortBy]);
 
   const createEvent = useCallback(async (eventData: Partial<Event>) => {
     try {
@@ -443,7 +431,7 @@ export default function EventsPage() {
 
         {/* Events Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-          {events.sort(sortEvents).map((event, index) => (
+          {events.map((event, index) => (
             <motion.div
               key={event.id}
               variants={cardVariants}

@@ -50,13 +50,6 @@ const BRANCHES = [
 ];
 
 // Animation variants
-const cardVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
-  hover: { scale: 1.02 },
-  tap: { scale: 0.98 }
-};
-
 const buttonVariants = {
   hover: { scale: 1.02 },
   tap: { scale: 0.98 }
@@ -118,7 +111,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const supabase = createClientComponentClient();
 
   const fetchProfile = useCallback(async () => {
@@ -172,32 +164,12 @@ export default function SettingsPage() {
 
       setSaving(true);
 
-      // Handle avatar upload if present
-      let avatarUrl = profile.avatar_url;
-      if (selectedFile) {
-        const fileExt = selectedFile.name.split('.').pop();
-        const fileName = `${user.id}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('avatars')
-          .upload(fileName, selectedFile, { upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('avatars')
-          .getPublicUrl(fileName);
-
-        avatarUrl = publicUrl;
-      }
-
       const { error } = await supabase
         .from('profiles')
         .upsert({
           id: user.id,
           name: profile.name,
           email: profile.email,
-          avatar_url: avatarUrl,
           batch: profile.batch,
           branch: profile.branch,
           interests: profile.interests,
@@ -215,7 +187,7 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }, [supabase, profile, selectedFile]);
+  }, [supabase, profile]);
 
   const handleInterestChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!profile) return;

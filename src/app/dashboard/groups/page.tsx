@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Plus, Dumbbell, Code, Book, Music, Gamepad, Camera, Coffee, MessageSquare, Trash2, MessageCircle, Search, Clock, Users, ArrowUpDown, Sparkles } from 'lucide-react';
+import { Dumbbell, Code, Book, Music, Gamepad, Camera, Coffee, MessageSquare, Trash2, Search, Clock, Users, Sparkles } from 'lucide-react';
 import { Database } from '../../../lib/database.types';
 import { motion } from 'framer-motion';
 import Link from 'next/link';

@@ -5,7 +5,7 @@ const uploadthing = createUploadthing();
 
 export const ourFileRouter = {
   messageAttachment: uploadthing(["image", "pdf", "audio"])
-    .middleware(async () => {
+    .middleware(async (): Promise<{ userId: string }> => {
       return { userId: "test" };
     })
     .onUploadComplete(async ({ file }) => {

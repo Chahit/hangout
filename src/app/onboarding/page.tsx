@@ -79,7 +79,7 @@ export default function OnboardingPage() {
         <div>
           <h2 className="text-3xl font-bold text-center">Complete Your Profile</h2>
           <p className="mt-2 text-center text-muted-foreground">
-            Let&#39;s get to know you better
+            Let&apos;s get to know you better
           </p>
         </div>
 
