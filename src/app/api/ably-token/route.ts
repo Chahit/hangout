@@ -20,15 +20,16 @@ export async function GET() {
         capability: {
           [`group-*`]: ['publish', 'subscribe', 'presence']
         }
-      }, (err, tokenRequest) => {
-        if (err) reject(err);
+      }).then((tokenRequest) => {
         resolve(tokenRequest);
+      }).catch((err) => {
+        reject(err);
       });
     });
 
     return NextResponse.json(tokenRequestData);
   } catch (error) {
     console.error('Error getting Ably token:', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
+    return new NextResponse('Error getting token', { status: 500 });
   }
-} 
+}

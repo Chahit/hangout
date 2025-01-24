@@ -4,20 +4,35 @@ import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { calculateCompatibilityScore } from '../questions';
 import { Heart, X, MessageCircle, Loader2, UserPlus, Check } from 'lucide-react';
+import Link from 'next/link';
+import type { Database } from '@/lib/database.types';
+
+interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  avatar_url?: string;
+}
 
 interface Match {
   id: string;
-  user_id: string;
-  email: string;
-  bio: string;
-  interests: string[];
-  answers: Record<string, string>;
-  compatibility: number;
-  matchStatus?: 'pending' | 'accepted' | 'rejected';
+  sender_id: string;
+  receiver_id: string;
+  status: string;
+  created_at: string;
+  sender: UserProfile;
+  receiver: UserProfile;
+  user_id?: string;
+  email?: string;
+  bio?: string;
+  interests?: string[];
+  answers?: any;
+  compatibility?: number;
+  matchStatus?: string;
 }
 
 export default function MatchesPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createClientComponentClient<Database>();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -73,6 +88,10 @@ export default function MatchesPage() {
 
         return {
           id: otherProfile.id,
+          sender_id: user.id,
+          receiver_id: otherProfile.user_id,
+          status: matchRequest?.status || 'pending',
+          created_at: new Date().toISOString(),
           user_id: otherProfile.user_id,
           email: otherProfile.users.email,
           bio: otherProfile.bio,
@@ -80,11 +99,15 @@ export default function MatchesPage() {
           answers: otherProfile.answers,
           compatibility: Math.round(compatibility * 100),
           matchStatus: matchRequest ? matchRequest.status : undefined
-        };
+        } as Match;
       });
 
       // Sort by compatibility
-      matchesWithCompatibility.sort((a, b) => b.compatibility - a.compatibility);
+      matchesWithCompatibility.sort((a, b) => {
+        const compA = a.compatibility || 0;
+        const compB = b.compatibility || 0;
+        return compB - compA;
+      });
       setMatches(matchesWithCompatibility);
     } catch (error) {
       console.error('Error fetching matches:', error);
@@ -94,7 +117,7 @@ export default function MatchesPage() {
     }
   }
 
-  async function handleMatchRequest(matchId: string) {
+  async function sendMatchRequest(matchId: string) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -153,7 +176,9 @@ export default function MatchesPage() {
             {/* Profile Header */}
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-semibold">{match.email.split('@')[0]}</h3>
+                <h3 className="text-lg font-semibold">
+                  {match.email?.split('@')[0] || 'Anonymous User'}
+                </h3>
                 <div className="flex items-center gap-2 text-purple-400">
                   <Heart className="w-4 h-4" />
                   <span>{match.compatibility}% Match</span>
@@ -164,45 +189,51 @@ export default function MatchesPage() {
             {/* Bio */}
             <p className="text-gray-300">{match.bio}</p>
 
+            {/* Email */}
+            {match.email && (
+              <p className="text-sm text-gray-600 mb-2">{match.email}</p>
+            )}
+
             {/* Interests */}
-            <div className="flex flex-wrap gap-2">
-              {match.interests.map((interest, index) => (
-                <span
-                  key={index}
-                  className="px-3 py-1 bg-gray-700 rounded-full text-sm"
-                >
-                  {interest}
-                </span>
-              ))}
-            </div>
+            {match.interests && match.interests.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {match.interests.map((interest, index) => (
+                  <span
+                    key={index}
+                    className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-sm"
+                  >
+                    {interest}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex justify-end gap-4 pt-4">
-              {!match.matchStatus && (
+              {match.matchStatus ? (
+                match.matchStatus === 'accepted' ? (
+                  <Link
+                    href={`/dashboard/dating/chat/${match.id}`}
+                    className="flex items-center justify-center gap-2 w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  >
+                    <MessageCircle size={20} />
+                    Chat
+                  </Link>
+                ) : (
+                  <button
+                    className="w-full px-4 py-2 bg-gray-200 text-gray-600 rounded-lg cursor-not-allowed"
+                    disabled
+                  >
+                    Pending
+                  </button>
+                )
+              ) : (
                 <button
-                  onClick={() => handleMatchRequest(match.user_id)}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
+                  onClick={() => sendMatchRequest(match.user_id || '')}
+                  className="flex items-center justify-center gap-2 w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                 >
-                  <UserPlus className="w-5 h-5" />
-                  Send Request
-                </button>
-              )}
-              {match.matchStatus === 'pending' && (
-                <button
-                  disabled
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg"
-                >
-                  <Check className="w-5 h-5" />
-                  Request Sent
-                </button>
-              )}
-              {match.matchStatus === 'accepted' && (
-                <button
-                  onClick={() => {/* Handle starting chat */}}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
-                >
-                  <MessageCircle className="w-5 h-5" />
-                  Message
+                  <UserPlus size={20} />
+                  Connect
                 </button>
               )}
             </div>

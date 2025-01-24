@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSpring, animated } from 'react-spring';
 import confetti from 'canvas-confetti';
 import { useRouter } from 'next/navigation';
+import type { Database } from '@/lib/database.types';
 
 // Add these type definitions at the top of the file
 type Answer = {
@@ -227,61 +228,73 @@ const Toast = ({ message }: ToastProps) => {
   );
 };
 
+interface Profile {
+  id: string;
+  name: string;
+  email: string;
+  bio: string;
+  interests: string[];
+  answers: Record<string, string>;
+}
+
 export default function DatingPage() {
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({});
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'profile' | 'matches'>('profile');
   const [matches, setMatches] = useState<DatingMatch[]>([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
-  const supabase = createClientComponentClient();
+  const supabase = createClientComponentClient<Database>();
   const router = useRouter();
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const setup = async () => {
       try {
-        const { data: { user }, error } = await supabase.auth.getUser();
-        if (error) throw error;
-        if (!user) {
-          console.error('No user found');
-          return;
+        setLoading(true);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await fetchProfile(session.user.id);
         }
-        setCurrentUser(user);
-        await fetchProfile(user.id);
       } catch (error) {
-        console.error('Error fetching user:', error);
+        console.error('Setup error:', error);
+        setMessage({ type: 'error', text: 'Failed to load profile' });
       } finally {
         setLoading(false);
       }
     };
-
-    fetchUser();
+    setup();
   }, []);
 
   async function fetchProfile(userId: string) {
     try {
       const { data: profile, error } = await supabase
         .from('dating_profiles')
-        .select('answers')
+        .select('*')
         .eq('user_id', userId)
         .single();
 
       if (error) throw error;
-      if (profile?.answers) {
-        setSelectedAnswers(profile.answers);
-        setCurrentQuestionIndex(DATING_QUESTIONS.length); // Show completion if all questions are answered
+      
+      if (profile) {
+        setProfile(profile);
+        if (profile.answers) {
+          setSelectedAnswers(profile.answers);
+          setCurrentQuestionIndex(DATING_QUESTIONS.length);
+        }
+        await fetchMatches();
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
+      setMessage({ type: 'error', text: 'Failed to load profile' });
     }
   }
 
   const fetchMatches = async () => {
     try {
-      if (!currentUser) {
+      if (!profile) {
         setMatches([]);
         return;
       }
@@ -293,7 +306,7 @@ export default function DatingPage() {
           sender:profiles!dating_matches_sender_id_fkey(id, name),
           receiver:profiles!dating_matches_receiver_id_fkey(id, name)
         `)
-        .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`);
+        .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`);
 
       if (error) throw error;
 
@@ -315,7 +328,7 @@ export default function DatingPage() {
 
   const handleAnswer = async (option: string) => {
     try {
-      if (!currentUser) {
+      if (!profile) {
         throw new Error('Not authenticated');
       }
 
@@ -327,7 +340,7 @@ export default function DatingPage() {
         const { error } = await supabase
           .from('dating_profiles')
           .upsert({
-            user_id: currentUser.id,
+            user_id: profile.id,
             answers: newAnswers,
           });
 
@@ -704,7 +717,7 @@ export default function DatingPage() {
                     </div>
                     <div>
                       <h3 className="text-lg font-medium line-clamp-1">
-                        {match.sender_id === currentUser?.id ? match.receiver_name : match.sender_name}
+                        {match.sender_id === profile?.id ? match.receiver_name : match.sender_name}
                       </h3>
                       <div className="flex items-center gap-2 text-sm text-gray-400">
                         <div className="flex items-center gap-1">
@@ -724,7 +737,7 @@ export default function DatingPage() {
                     </div>
                   </div>
                   <div className="flex gap-2 w-full sm:w-auto">
-                    {match.status === 'pending' && match.receiver_id === currentUser?.id && (
+                    {match.status === 'pending' && match.receiver_id === profile?.id && (
                       <>
                         <motion.button
                           variants={buttonVariants}

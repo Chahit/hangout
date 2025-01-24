@@ -2,12 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Heart, MessageCircle, Share, MoreVertical } from 'lucide-react';
+import { Heart, MessageCircle, Share, MoreVertical, Plus, X, Trash2, ArrowUpDown, MessageSquare, Send } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Database } from '@/lib/database.types';
 import { format } from 'date-fns';
 import Modal from '@/components/shared/Modal';
-import { MessageSquare, Plus, X, Trash2, ArrowUpDown, Clock, Sparkles, Send } from 'lucide-react';
+
+interface User {
+  id: string;
+  email: string;
+  user_metadata: {
+    name: string;
+  };
+}
 
 interface Confession {
   id: string;
@@ -95,14 +102,16 @@ export default function ConfessionsPage() {
   const [loading, setLoading] = useState(true);
   const [commenting, setCommenting] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const supabase = createClientComponentClient<Database>();
 
   useEffect(() => {
-    fetchConfessions();
-    getCurrentUser();
+    const setup = async () => {
+      await Promise.all([fetchConfessions(), getCurrentUser()]);
+    };
+    setup();
   }, []);
 
   const fetchConfessions = async () => {

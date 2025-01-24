@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useParams } from 'next/navigation';
-import { Send, Smile, ArrowLeft } from 'lucide-react';
+import { Send, Smile, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import type { Database } from '@/lib/database.types';
 
@@ -21,6 +21,13 @@ interface UserProfile {
   email: string;
 }
 
+interface MatchInfo {
+  id: string;
+  partner_id: string;
+  partner_email: string;
+  status: string;
+}
+
 export default function ChatPage() {
   const params = useParams();
   const matchId = params.matchId as string;
@@ -36,9 +43,14 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchMatchInfo();
-    fetchMessages();
-    handleNewMessage();
+    const setup = async () => {
+      await Promise.all([
+        fetchMatchInfo(),
+        fetchMessages()
+      ]);
+      handleNewMessage();
+    };
+    setup();
   }, [matchId]);
 
   useEffect(() => {
@@ -47,13 +59,13 @@ export default function ChatPage() {
       if (user) {
         setCurrentUser({
           id: user.id,
-          name: user.user_metadata.name,
-          email: user.user_metadata.email
+          name: user.user_metadata.name || user.email?.split('@')[0] || 'Anonymous',
+          email: user.email || ''
         });
       }
     };
     getUser();
-  }, []);
+  }, [supabase.auth]);
 
   async function fetchMatchInfo() {
     try {
@@ -128,7 +140,8 @@ export default function ChatPage() {
         table: 'dating_messages',
         filter: `match_id=eq.${matchId}`
       }, (payload) => {
-        handleNewMessage(payload.new as Message);
+        const newMessage = payload.new as Message;
+        setMessages(prev => [...prev, newMessage]);
       })
       .subscribe();
 
