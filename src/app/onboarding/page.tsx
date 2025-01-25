@@ -119,7 +119,7 @@ export default function OnboardingPage() {
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
+      const { error: profileError } = await supabase
         .from('profiles')
         .upsert({
           id: user?.id,
@@ -127,9 +127,7 @@ export default function OnboardingPage() {
           username: username.toLowerCase(),
           interests: selectedInterests,
           updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+        });
 
       if (profileError) throw profileError;
 

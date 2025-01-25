@@ -7,7 +7,6 @@ import { motion } from 'framer-motion';
 import type { Database } from '@/lib/database.types';
 import { format } from 'date-fns';
 import Modal from '@/components/shared/Modal';
-import Image from 'next/image';
 
 interface User {
   id: string;

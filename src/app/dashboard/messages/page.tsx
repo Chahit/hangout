@@ -11,6 +11,8 @@ interface DirectMessage {
   id: string;
   content: string;
   created_at: string;
+  sender_id: string;
+  receiver_id: string;
   sender: {
     id: string;
     username: string;
@@ -54,16 +56,19 @@ export default function MessagesPage() {
             id,
             content,
             created_at,
+            sender_id,
+            receiver_id,
             sender:profiles!direct_messages_sender_id_fkey(id, username, name),
             receiver:profiles!direct_messages_receiver_id_fkey(id, username, name)
           `)
           .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .returns<DirectMessage[]>();
 
         if (error) throw error;
 
         // Process and deduplicate chats
-        const processedChats = (chats || []).reduce((acc: Chat[], message: any) => {
+        const processedChats = (chats || []).reduce((acc: Chat[], message: DirectMessage) => {
           const otherUser = message.sender.id === user.id ? message.receiver : message.sender;
           
           // Check if we already have a chat with this user

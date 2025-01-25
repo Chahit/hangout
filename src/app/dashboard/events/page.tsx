@@ -46,6 +46,18 @@ interface GroupMemberResponse {
   };
 }
 
+interface CreateEventData {
+  title: string;
+  description: string;
+  start_time: string;
+  end_time: string;
+  location: string;
+  is_public: boolean;
+  max_participants?: number;
+  group_id?: string;
+  media_url?: string;
+}
+
 const cardVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
@@ -239,7 +251,7 @@ export default function EventsPage() {
     fetchUserGroups();
   }, [checkAdminStatus, fetchEvents, fetchUserGroups, activeTab]);
 
-  const createEvent = useCallback(async (eventData: any) => {
+  const createEvent = useCallback(async (eventData: CreateEventData) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;

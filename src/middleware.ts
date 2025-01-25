@@ -17,7 +17,7 @@ export async function middleware(req: NextRequest) {
 
   if (session?.user) {
     // Check if profile exists and is complete
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from('profiles')
       .select('id, batch, branch, username')
       .eq('id', session.user.id)
