@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Heart, Send, X, Loader2 } from 'lucide-react';
+import { Heart, Send, X, Loader2, Share, MessageCircle, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Database } from '@/lib/database.types';
 import { format } from 'date-fns';
@@ -91,14 +91,13 @@ export default function ConfessionsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [confessions, setConfessions] = useState<Confession[]>([]);
   const [newConfession, setNewConfession] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPostModal, setShowPostModal] = useState(false);
   const [commenting, setCommenting] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
+  const [shareSuccess, setShareSuccess] = useState<string | null>(null);
   const supabase = createClientComponentClient<Database>();
 
   const fetchUser = useCallback(async () => {
@@ -168,63 +167,21 @@ export default function ConfessionsPage() {
     }
   }, [supabase]);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Only allow image files
-    if (!file.type.startsWith('image/')) {
-      console.error('Only image files are supported');
-      return;
-    }
-
-    setSelectedFile(file);
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setMediaPreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handlePostConfession = async () => {
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) return;
-
-      let mediaUrl = null;
-
-      if (selectedFile) {
-        const fileExt = selectedFile.name.split('.').pop();
-        const fileName = `${Math.random()}.${fileExt}`;
-        const filePath = `${currentUser.id}/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('confession_media')
-          .upload(filePath, selectedFile);
-
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('confession_media')
-          .getPublicUrl(filePath);
-
-        mediaUrl = publicUrl;
-      }
 
       const { error } = await supabase
         .from('confessions')
         .insert({
           content: newConfession,
           user_id: currentUser.id,
-          media_url: mediaUrl,
         });
 
       if (error) throw error;
 
       setNewConfession('');
-      setSelectedFile(null);
-      setMediaPreview(null);
       setShowPostModal(false);
       fetchConfessions();
     } catch (error) {
@@ -305,23 +262,6 @@ export default function ConfessionsPage() {
       }
       console.log('Confession found:', confession);
 
-      // Delete media from storage if exists
-      if (confession.media_url) {
-        console.log('Deleting media file...');
-        const mediaPath = confession.media_url.split('/').pop();
-        if (mediaPath) {
-          const { error: storageError } = await supabase.storage
-            .from('confession_media')
-            .remove([`${mediaPath}`]);
-          
-          if (storageError) {
-            console.error('Error deleting media:', storageError);
-          } else {
-            console.log('Media deleted successfully');
-          }
-        }
-      }
-
       // Delete confession (cascade will handle comments and likes)
       console.log('Deleting confession from database...');
       const { error } = await supabase
@@ -359,6 +299,28 @@ export default function ConfessionsPage() {
         return [...confessions].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
+    }
+  };
+
+  // Add handleShare function
+  const handleShare = async (confession: Confession) => {
+    const shareUrl = `${window.location.origin}/dashboard/confessions/${confession.id}`;
+    const shareText = `Check out this confession: ${confession.content.slice(0, 100)}${confession.content.length > 100 ? '...' : ''}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Campus Confession',
+          text: shareText,
+          url: shareUrl,
+        });
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareSuccess(confession.id);
+        setTimeout(() => setShareSuccess(null), 2000);
+      }
+    } catch (error) {
+      console.error('Error sharing:', error);
     }
   };
 
@@ -480,19 +442,6 @@ export default function ConfessionsPage() {
                 {confession.content}
               </p>
 
-              {/* Media Content */}
-              {confession.media_url && (
-                <div className="relative mt-4">
-                  <Image
-                    src={confession.media_url}
-                    alt="Confession media"
-                    width={400}
-                    height={300}
-                    className="rounded-lg max-h-[300px] object-cover"
-                  />
-                </div>
-              )}
-
               {/* Action Buttons */}
               <div className="flex items-center gap-4 pt-2">
                 <motion.button
@@ -517,7 +466,7 @@ export default function ConfessionsPage() {
                   onClick={() => setCommenting(commenting === confession.id ? null : confession.id)}
                   className="flex items-center gap-2 text-sm text-gray-400 hover:text-purple-500 transition-colors"
                 >
-                  <Image src="/icons/comment.svg" alt="Comment" width={20} height={20} />
+                  <MessageCircle className="w-4 h-4" />
                   {confession.comments.length}
                 </motion.button>
 
@@ -525,10 +474,20 @@ export default function ConfessionsPage() {
                   variants={buttonVariants}
                   whileHover="hover"
                   whileTap="tap"
+                  onClick={() => handleShare(confession)}
                   className="flex items-center gap-2 text-sm text-gray-400 hover:text-blue-500 transition-colors"
                 >
-                  <Image src="/icons/share.svg" alt="Share" width={20} height={20} />
-                  Share
+                  {shareSuccess === confession.id ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Share className="w-4 h-4" />
+                      Share
+                    </>
+                  )}
                 </motion.button>
               </div>
 
@@ -613,50 +572,17 @@ export default function ConfessionsPage() {
                   className="w-full h-32 bg-white/5 rounded-xl p-4 text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
                 />
 
-                {mediaPreview && (
-                  <div className="relative mt-4">
-                    <Image
-                      src={mediaPreview}
-                      alt="Media preview"
-                      width={400}
-                      height={300}
-                      className="rounded-lg max-h-[300px] object-cover"
-                    />
-                    <button
-                      onClick={() => setMediaPreview('')}
-                      className="absolute top-2 right-2 p-1 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
-                    >
-                      <X className="w-4 h-4 text-white" />
-                    </button>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <label className="flex-1 cursor-pointer">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                    />
-                    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 rounded-xl hover:bg-white/10 transition-all cursor-pointer text-sm">
-                      <Image src="/icons/image.svg" alt="Image" width={20} height={20} />
-                      Add Media
-                    </div>
-                  </label>
-
-                  <motion.button
-                    variants={buttonVariants}
-                    whileHover="hover"
-                    whileTap="tap"
-                    onClick={handlePostConfession}
-                    disabled={!newConfession.trim()}
-                    className="flex-[2] px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    Share Anonymously
-                  </motion.button>
-                </div>
+                <motion.button
+                  variants={buttonVariants}
+                  whileHover="hover"
+                  whileTap="tap"
+                  onClick={handlePostConfession}
+                  disabled={!newConfession.trim()}
+                  className="w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
+                >
+                  <Send className="w-4 h-4" />
+                  Share Anonymously
+                </motion.button>
               </div>
             </div>
           </Modal>

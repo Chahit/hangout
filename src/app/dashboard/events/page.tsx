@@ -8,6 +8,15 @@ import { motion } from 'framer-motion';
 import Modal from '@/components/shared/Modal';
 import type { Database } from '@/lib/database.types';
 
+interface EventParticipant {
+  user_id: string;
+  status: 'going' | 'maybe' | 'not_going';
+  user: {
+    id: string;
+    name: string;
+  };
+}
+
 interface Event {
   id: string;
   title: string;
@@ -16,21 +25,13 @@ interface Event {
   end_time: string;
   location: string;
   created_at: string;
-  user_id: string;
   media_url?: string;
   is_public: boolean;
   is_approved: boolean;
   max_participants: number;
   created_by: string;
   group_id?: string;
-  participants: Array<{
-    user_id: string;
-    user: {
-      id: string;
-      name: string;
-    };
-    status: 'pending' | 'accepted' | 'declined';
-  }>;
+  event_participants: EventParticipant[];
   group?: {
     id: string;
     name: string;
@@ -105,10 +106,10 @@ const LoadingSpinner = () => (
   </div>
 );
 
-const handleParticipantUpdate = (prevEvents: Event[], eventId: string, userId: string, newParticipant: Event['participants'][0]) => {
+const handleParticipantUpdate = (prevEvents: Event[], eventId: string, userId: string, newParticipant: EventParticipant) => {
   return prevEvents.map(event => {
     if (event.id === eventId) {
-      const updatedParticipants = [...(event.participants || [])];
+      const updatedParticipants = [...(event.event_participants || [])];
       const participantIndex = updatedParticipants.findIndex(participant => participant.user_id === userId);
       
       if (participantIndex >= 0) {
@@ -119,7 +120,7 @@ const handleParticipantUpdate = (prevEvents: Event[], eventId: string, userId: s
       
       return {
         ...event,
-        participants: updatedParticipants
+        event_participants: updatedParticipants
       };
     }
     return event;
@@ -127,7 +128,7 @@ const handleParticipantUpdate = (prevEvents: Event[], eventId: string, userId: s
 };
 
 const isParticipant = (event: Event, userId: string): boolean => {
-  return event.participants.some(p => p.user_id === userId);
+  return event.event_participants.some(p => p.user_id === userId);
 };
 
 export default function EventsPage() {
@@ -144,7 +145,6 @@ export default function EventsPage() {
     start_time: '',
     end_time: '',
     is_public: true,
-    max_participants: 0,
     group_id: '',
   });
   const [userGroups, setUserGroups] = useState<Array<{ id: string; name: string; }>>([]);
@@ -170,9 +170,10 @@ export default function EventsPage() {
         .from('events')
         .select(`
           *,
-          participants:event_participants(
-            user:profiles(id, name),
-            status
+          event_participants (
+            user_id,
+            status,
+            user:profiles(id, name)
           ),
           group:groups(id, name)
         `)
@@ -187,14 +188,19 @@ export default function EventsPage() {
         if (!event.is_approved) return false;
         if (event.is_public) return true;
         if (event.group_id) {
-          return event.participants.some((p: { user: { id: string }, status: string }) => 
-            p.user.id === session.user.id && p.status === 'accepted'
+          return event.event_participants.some((p: EventParticipant) => 
+            p.user_id === session.user.id && p.status === 'going'
           );
         }
         return false;
       });
 
-      setEvents(filteredEvents);
+      // Transform the data to match the Event interface
+      const transformedEvents = filteredEvents.map(event => ({
+        ...event
+      }));
+
+      setEvents(transformedEvents);
     } catch (error) {
       console.error('Error fetching events:', error);
     } finally {
@@ -233,12 +239,13 @@ export default function EventsPage() {
     fetchUserGroups();
   }, [checkAdminStatus, fetchEvents, fetchUserGroups, activeTab]);
 
-  const createEvent = useCallback(async (eventData: Partial<Event>) => {
+  const createEvent = useCallback(async (eventData: any) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
 
       // Upload media if present
+      let publicUrl = null;
       if (selectedFile) {
         const fileExt = selectedFile.name.split('.').pop();
         const fileName = `${session.user.id}_${Date.now()}.${fileExt}`;
@@ -249,74 +256,42 @@ export default function EventsPage() {
 
         if (uploadError) throw uploadError;
 
-        const { data: { publicUrl } } = supabase.storage
+        const { data: { publicUrl: url } } = supabase.storage
           .from('event-media')
           .getPublicUrl(fileName);
-
-        const { data: event, error } = await supabase
-          .from('events')
-          .insert({
-            ...eventData,
-            user_id: session.user.id,
-            created_by: session.user.id,
-            group_id: eventData.group_id || null,
-            media_url: publicUrl,
-            is_public: true,
-            is_approved: true,
-            max_participants: 50,
-            participants: []
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        // Add creator as first participant
-        const { error: participantError } = await supabase
-          .from('event_participants')
-          .insert({
-            event_id: event.id,
-            user_id: session.user.id,
-            status: 'accepted'
-          });
-
-        if (participantError) throw participantError;
-
-        setEvents(prev => [...prev, event]);
-        setShowCreateModal(false);
-        setSelectedFile(null);
-      } else {
-        const { data: event, error } = await supabase
-          .from('events')
-          .insert({
-            ...eventData,
-            user_id: session.user.id,
-            created_by: session.user.id,
-            group_id: eventData.group_id || null,
-            is_public: true,
-            is_approved: true,
-            max_participants: 50,
-            participants: []
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        // Add creator as first participant
-        const { error: participantError } = await supabase
-          .from('event_participants')
-          .insert({
-            event_id: event.id,
-            user_id: session.user.id,
-            status: 'accepted'
-          });
-
-        if (participantError) throw participantError;
-
-        setEvents(prev => [...prev, event]);
-        setShowCreateModal(false);
+        
+        publicUrl = url;
       }
+
+      const { data: event, error } = await supabase
+        .from('events')
+        .insert({
+          ...eventData,
+          created_by: session.user.id,
+          group_id: eventData.group_id || null,
+          media_url: publicUrl,
+          is_public: true,
+          is_approved: false // Always set to false initially
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Add creator as first participant
+      const { error: participantError } = await supabase
+        .from('event_participants')
+        .insert({
+          event_id: event.id,
+          user_id: session.user.id,
+          status: 'going'
+        });
+
+      if (participantError) throw participantError;
+
+      setEvents(prev => [...prev, event]);
+      setShowCreateModal(false);
+      setSelectedFile(null);
     } catch (error) {
       console.error('Error creating event:', error);
     }
@@ -335,13 +310,13 @@ export default function EventsPage() {
 
       if (!userProfile) return;
 
-      const newParticipant = {
+      const newParticipant: EventParticipant = {
         user_id: session.user.id,
         user: {
           id: session.user.id,
           name: userProfile.name,
         },
-        status: 'accepted' as const
+        status: 'going'
       };
 
       setEvents(prev => handleParticipantUpdate(prev, eventId, session.user.id, newParticipant));
@@ -351,7 +326,7 @@ export default function EventsPage() {
         .insert({
           event_id: eventId,
           user_id: session.user.id,
-          status: 'accepted'
+          status: 'going'
         });
 
       if (error) throw error;
@@ -360,31 +335,55 @@ export default function EventsPage() {
     }
   }, [supabase]);
 
-  const respondToParticipant = useCallback(async (eventId: string, userId: string, status: 'accepted' | 'declined') => {
+  const handleRemoveEvent = useCallback(async (eventId: string) => {
     try {
+      // Delete the event and its participants
       const { error } = await supabase
-        .from('event_participants')
-        .update({ status })
-        .match({ event_id: eventId, user_id: userId });
+        .from('events')
+        .delete()
+        .eq('id', eventId);
 
       if (error) throw error;
 
-      setEvents(prev => prev.map(event => {
-        if (event.id === eventId) {
-          return {
-            ...event,
-            participants: event.participants.map(p => {
-              if (p.user.id === userId) {
-                return { ...p, status };
-              }
-              return p;
-            })
-          };
-        }
-        return event;
-      }));
+      // Update local state
+      setEvents(prev => prev.filter(event => event.id !== eventId));
     } catch (error) {
-      console.error('Error responding to participant:', error);
+      console.error('Error removing event:', error);
+    }
+  }, [supabase]);
+
+  const handleApproveEvent = useCallback(async (eventId: string) => {
+    try {
+      const { error } = await supabase
+        .from('events')
+        .update({ is_approved: true })
+        .eq('id', eventId);
+
+      if (error) throw error;
+
+      // Update local state
+      setEvents(prev => prev.map(event => 
+        event.id === eventId ? { ...event, is_approved: true } : event
+      ));
+    } catch (error) {
+      console.error('Error approving event:', error);
+    }
+  }, [supabase]);
+
+  const handleDeclineEvent = useCallback(async (eventId: string) => {
+    try {
+      // Delete the event and its participants
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', eventId);
+
+      if (error) throw error;
+
+      // Update local state
+      setEvents(prev => prev.filter(event => event.id !== eventId));
+    } catch (error) {
+      console.error('Error declining event:', error);
     }
   }, [supabase]);
 
@@ -485,11 +484,6 @@ export default function EventsPage() {
                     <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full">
                       {event.is_public ? 'Public' : 'Private'}
                     </span>
-                    {event.max_participants && (
-                      <span className="text-xs text-gray-400">
-                        {event.participants?.length || 0}/{event.max_participants} spots
-                      </span>
-                    )}
                   </div>
                 </div>
 
@@ -522,7 +516,7 @@ export default function EventsPage() {
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-gray-400" />
                   <span className="text-sm text-gray-400">
-                    {event.participants?.length || 0} going
+                    {event.event_participants?.length || 0} going
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -532,7 +526,7 @@ export default function EventsPage() {
                         variants={buttonVariants}
                         whileHover="hover"
                         whileTap="tap"
-                        onClick={() => respondToParticipant(event.id, event.participants[0].user.id, 'accepted')}
+                        onClick={() => handleApproveEvent(event.id)}
                         className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 transition-colors"
                       >
                         Approve
@@ -541,7 +535,7 @@ export default function EventsPage() {
                         variants={buttonVariants}
                         whileHover="hover"
                         whileTap="tap"
-                        onClick={() => respondToParticipant(event.id, event.participants[0].user.id, 'declined')}
+                        onClick={() => handleDeclineEvent(event.id)}
                         className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
                       >
                         Decline
@@ -552,10 +546,10 @@ export default function EventsPage() {
                       variants={buttonVariants}
                       whileHover="hover"
                       whileTap="tap"
-                      onClick={() => respondToParticipant(event.id, event.participants[0].user.id, 'declined')}
+                      onClick={() => handleRemoveEvent(event.id)}
                       className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
                     >
-                      Decline
+                      Remove
                     </motion.button>
                   ) : (
                     <motion.button
@@ -566,7 +560,7 @@ export default function EventsPage() {
                       disabled={isParticipant(event, event.created_by)}
                       className="px-4 py-1.5 bg-purple-500 text-white text-sm rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Join Event
+                      {isParticipant(event, event.created_by) ? 'Going' : 'Join Event'}
                     </motion.button>
                   )}
                 </div>
@@ -688,31 +682,18 @@ export default function EventsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Group (Optional)</label>
-                    <select
-                      value={newEvent.group_id}
-                      onChange={(e) => setNewEvent({ ...newEvent, group_id: e.target.value })}
-                      className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    >
-                      <option value="">No group</option>
-                      {userGroups.map(group => (
-                        <option key={group.id} value={group.id}>{group.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Max Participants</label>
-                    <input
-                      type="number"
-                      value={newEvent.max_participants}
-                      onChange={(e) => setNewEvent({ ...newEvent, max_participants: parseInt(e.target.value) })}
-                      className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      placeholder="Optional"
-                      min="1"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Group (Optional)</label>
+                  <select
+                    value={newEvent.group_id}
+                    onChange={(e) => setNewEvent({ ...newEvent, group_id: e.target.value })}
+                    className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">No group</option>
+                    {userGroups.map(group => (
+                      <option key={group.id} value={group.id}>{group.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <label className="flex items-center gap-2 cursor-pointer">

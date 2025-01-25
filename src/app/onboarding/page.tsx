@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Music, BookOpen, Palette, Code, Dumbbell, Camera, Film, Gamepad, Users, Coffee } from 'lucide-react';
@@ -19,19 +19,53 @@ const INTERESTS = [
 ];
 
 const BATCHES = ['2020', '2021', '2022', '2023', '2024'];
-const BRANCHES = ['Computer Science', 'Electronics', 'Mechanical', 'Civil', 'Chemical'];
+const BRANCHES = [
+  'CSE',
+  'ECE',
+  'Mechanical',
+  'Civil',
+  'Chemical',
+  'Physics',
+  'Mathematics',
+  'Chemistry',
+  'BMS',
+  'Economics',
+  'Ecofin',
+  'English',
+  'History',
+  'Sociology',
+  'Design'
+];
 
 export default function OnboardingPage() {
   const router = useRouter();
   const supabase = createClientComponentClient();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [user, setUser] = useState<{ id: string } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
+    username: '',
     batch: '',
     branch: '',
   });
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  const [error, setError] = useState('');
+  const [username, setUsername] = useState('');
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [isUsernameAvailable, setIsUsernameAvailable] = useState<boolean | null>(null);
+
+  // Fetch user on mount
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/auth');
+        return;
+      }
+      setUser(user);
+    };
+    fetchUser();
+  }, [supabase, router]);
 
   const toggleInterest = (interestId: string) => {
     setSelectedInterests(prev => 
@@ -41,33 +75,68 @@ export default function OnboardingPage() {
     );
   };
 
+  const checkUsername = useCallback(async (username: string) => {
+    if (!username || username.length < 3) {
+      setIsUsernameAvailable(null);
+      return;
+    }
+
+    setIsCheckingUsername(true);
+    try {
+      const { data, error } = await supabase
+        .rpc('check_username_availability', {
+          username_to_check: username
+        });
+
+      if (error) throw error;
+      setIsUsernameAvailable(data);
+    } catch (error) {
+      console.error('Error checking username:', error);
+      setIsUsernameAvailable(null);
+    } finally {
+      setIsCheckingUsername(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (username) {
+        checkUsername(username);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [username, checkUsername]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) throw new Error('No user found');
+      if (!isUsernameAvailable) {
+        setError('Please choose a different username');
+        return;
+      }
 
-      const { error: profileError } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .upsert({
-          id: user.id,
-          name: formData.name,
-          batch: formData.batch,
-          branch: formData.branch,
+          id: user?.id,
+          ...formData,
+          username: username.toLowerCase(),
           interests: selectedInterests,
           updated_at: new Date().toISOString(),
-        });
+        })
+        .select()
+        .single();
 
       if (profileError) throw profileError;
 
       router.push('/dashboard');
     } catch (error) {
       console.error('Error:', error);
-      setError('Failed to save profile. Please try again.');
+      setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -97,6 +166,47 @@ export default function OnboardingPage() {
                 value={formData.name}
                 onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               />
+            </div>
+
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium mb-1">
+                Username
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">@</span>
+                <input
+                  type="text"
+                  id="username"
+                  required
+                  className="mobile-input pl-8"
+                  value={username}
+                  onChange={(e) => {
+                    const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                    setUsername(value);
+                    setFormData({ ...formData, username: value });
+                  }}
+                  placeholder="your_username"
+                />
+                {isCheckingUsername && (
+                  <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-purple-500"></div>
+                  </div>
+                )}
+                {!isCheckingUsername && isUsernameAvailable !== null && (
+                  <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                    {isUsernameAvailable ? (
+                      <span className="text-green-500">✓</span>
+                    ) : (
+                      <span className="text-red-500">✗</span>
+                    )}
+                  </div>
+                )}
+              </div>
+              {username && !isCheckingUsername && (
+                <p className={`mt-1 text-sm ${isUsernameAvailable ? 'text-green-500' : 'text-red-500'}`}>
+                  {isUsernameAvailable ? 'Username is available' : 'Username is taken'}
+                </p>
+              )}
             </div>
 
             <div>

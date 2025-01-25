@@ -10,34 +10,25 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  if (session?.user) {
-    // Check if profile exists
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', session.user.id)
-      .single();
-
-    if (!profile) {
-      // Create profile if it doesn't exist
-      const { error } = await supabase.from('profiles').insert({
-        id: session.user.id,
-        name: session.user.user_metadata.name || session.user.email?.split('@')[0] || 'Anonymous',
-        email: session.user.email,
-        batch: '',
-        branch: '',
-        updated_at: new Date().toISOString(),
-      });
-
-      if (error) {
-        console.error('Error creating profile:', error);
-      }
-    }
-  }
-
   // Auth routes that should be accessible without session
   const isAuthRoute = req.nextUrl.pathname.startsWith("/auth");
   const isPublicRoute = req.nextUrl.pathname === "/";
+  const isOnboardingRoute = req.nextUrl.pathname === "/onboarding";
+
+  if (session?.user) {
+    // Check if profile exists and is complete
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, batch, branch, username')
+      .eq('id', session.user.id)
+      .single();
+
+    // If no profile exists or profile is incomplete, redirect to onboarding
+    // unless they're already on the onboarding page
+    if ((!profile || !profile.batch || !profile.branch || !profile.username) && !isOnboardingRoute) {
+      return NextResponse.redirect(new URL("/onboarding", req.url));
+    }
+  }
 
   // If user is signed in and on the landing page, redirect to dashboard
   if (session && isPublicRoute) {
@@ -46,7 +37,7 @@ export async function middleware(req: NextRequest) {
 
   // If user is not signed in and trying to access protected route
   if (!session && !isAuthRoute && !isPublicRoute) {
-    return NextResponse.redirect(new URL("/auth/login", req.url));
+    return NextResponse.redirect(new URL("/auth", req.url));
   }
 
   // If user is signed in and trying to access auth routes
