@@ -28,8 +28,7 @@ export default function AuthForm() {
         options: {
           queryParams: {
             access_type: 'offline',
-            prompt: 'consent',
-            hd: 'snu.edu.in',
+            prompt: 'select_account'
           },
           redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
           scopes: 'email profile'
@@ -37,7 +36,7 @@ export default function AuthForm() {
       });
 
       if (error) throw error;
-      console.log('Redirecting to Google consent page...');
+      console.log('Redirecting to Google account selection...');
     } catch (error) {
       console.error('Google Sign-In error:', error);
       setError(error instanceof Error ? error.message : 'Failed to sign in with Google');
