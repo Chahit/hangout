@@ -2,11 +2,25 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { calculateCompatibilityScore } from '../questions';
+import { calculateEnhancedCompatibilityScore, QUESTION_CATEGORIES } from '../questions';
 import { Heart, UserPlus, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import type { Database } from '@/lib/database.types';
 import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+
+interface CompatibilityDetails {
+  score: number;
+  categoryScores: Record<string, number>;
+  details: Array<{
+    category: string;
+    score: number;
+    questions: Array<{
+      id: number;
+      similarity: number;
+    }>;
+  }>;
+}
 
 interface DatingProfile {
   id: string;
@@ -25,6 +39,7 @@ interface DatingProfile {
     email: string;
   };
   compatibility?: number;
+  compatibilityDetails?: CompatibilityDetails;
 }
 
 export default function MatchesPage() {
@@ -32,6 +47,7 @@ export default function MatchesPage() {
   const [matches, setMatches] = useState<DatingProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const router = useRouter();
 
   const fetchMatches = useCallback(async () => {
     try {
@@ -57,9 +73,21 @@ export default function MatchesPage() {
         .single();
 
       if (profileError) throw profileError;
+      if (!myProfile.has_completed_profile) {
+        router.push('/dashboard/dating/profile');
+        return;
+      }
 
-      // Get potential matches based on gender preference
-      const { data: potentialMatches, error: matchesError } = await supabase
+      // Get potential matches based on gender preference and completion status
+      const { data: existingConnections } = await supabase
+        .from('dating_connections')
+        .select('to_user_id')
+        .eq('from_user_id', session.user.id);
+
+      const excludedUserIds = existingConnections?.map(d => d.to_user_id) || [];
+
+      // Build query
+      let query = supabase
         .from('dating_profiles')
         .select(`
           *,
@@ -71,18 +99,31 @@ export default function MatchesPage() {
         `)
         .eq('gender', myProfile.looking_for)
         .eq('looking_for', myProfile.gender)
-        .neq('user_id', session.user.id)
-        .eq('has_completed_profile', true);
+        .eq('has_completed_profile', true)
+        .neq('user_id', session.user.id);
+
+      // Only add the not.in filter if there are users to exclude
+      if (excludedUserIds.length > 0) {
+        query = query.not('user_id', 'in', excludedUserIds);
+      }
+
+      const { data: potentialMatches, error: matchesError } = await query;
 
       if (matchesError) throw matchesError;
 
       // Calculate compatibility scores and sort by score
       const matchesWithScores = potentialMatches
-        .map((match) => ({
-          ...match,
-          compatibility: calculateCompatibilityScore(myProfile.answers, match.answers)
-        }))
-        .sort((a, b) => (b.compatibility || 0) - (a.compatibility || 0));
+        .map((match) => {
+          const compatibility = calculateEnhancedCompatibilityScore(myProfile.answers, match.answers);
+          return {
+            ...match,
+            compatibility: compatibility.score,
+            compatibilityDetails: compatibility
+          };
+        })
+        .sort((a, b) => (b.compatibility || 0) - (a.compatibility || 0))
+        // Filter out low compatibility matches (below 60%)
+        .filter(match => (match.compatibility || 0) >= 0.6);
 
       setMatches(matchesWithScores);
     } catch (error) {
@@ -160,6 +201,31 @@ export default function MatchesPage() {
                   </div>
                 </div>
               </div>
+
+              {match.compatibilityDetails && (
+                <div className="mb-4 space-y-2">
+                  {Object.entries(match.compatibilityDetails.categoryScores)
+                    .sort(([,a], [,b]) => b - a)
+                    .map(([category, score]) => (
+                      <div key={category} className="flex items-center justify-between">
+                        <span className="text-sm text-gray-400">
+                          {QUESTION_CATEGORIES[category as keyof typeof QUESTION_CATEGORIES].description}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
+                              style={{ width: `${Math.round(score * 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-sm text-gray-300">
+                            {Math.round(score * 100)}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
 
               {match.bio && (
                 <p className="text-gray-300 mb-4">{match.bio}</p>

@@ -164,20 +164,22 @@ export default function SettingsPage() {
 
       setSaving(true);
 
-      const { error } = await supabase
+      // Update the profile directly without fetching current profile
+      const { error: updateError } = await supabase
         .from('profiles')
-        .upsert({
-          id: user.id,
+        .update({
           name: profile.name,
           email: profile.email,
           batch: profile.batch,
           branch: profile.branch,
           interests: profile.interests,
           notification_preferences: profile.notification_preferences,
-          privacy_settings: profile.privacy_settings
-        });
+          privacy_settings: profile.privacy_settings,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
       setTimeout(() => setMessage(null), 3000);

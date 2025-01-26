@@ -46,34 +46,30 @@ BEGIN
     DROP POLICY IF EXISTS "Event participants delete access" ON event_participants;
 
     -- Events policies
-    CREATE POLICY "Events read access"
+    CREATE POLICY "Enable read access for authenticated users"
         ON events FOR SELECT
         TO authenticated
-        USING (
-            is_approved = true 
-            OR created_by = auth.uid()
-            OR auth.email() = 'cl883@snu.edu.in' -- Admin can see all events
-        );
+        USING (true);
     
-    CREATE POLICY "Events insert access"
+    CREATE POLICY "Enable insert access for authenticated users"
         ON events FOR INSERT
         TO authenticated
-        WITH CHECK (auth.uid() IS NOT NULL);
+        WITH CHECK (auth.uid() = created_by);
     
-    CREATE POLICY "Events update access"
+    CREATE POLICY "Enable update access for users based on email"
         ON events FOR UPDATE
         TO authenticated
         USING (
-            created_by = auth.uid()
-            OR auth.email() = 'cl883@snu.edu.in' -- Admin can update any event
+            auth.uid() = created_by 
+            OR auth.email() = 'an459@snu.edu.in' -- Admin can update any event
         );
     
-    CREATE POLICY "Events delete access"
+    CREATE POLICY "Enable delete access for users based on email"
         ON events FOR DELETE
         TO authenticated
         USING (
-            created_by = auth.uid()
-            OR auth.email() = 'cl883@snu.edu.in' -- Admin can delete any event
+            auth.uid() = created_by 
+            OR auth.email() = 'an459@snu.edu.in' -- Admin can delete any event
         );
 
     -- Event participants policies

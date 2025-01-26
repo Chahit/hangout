@@ -31,10 +31,12 @@ export default function RequestsPage() {
       }
 
       const { data, error } = await supabase
-        .from('dating_matches')
+        .from('dating_connections')
         .select(`
           *,
-          sender:sender_id (
+          sender:profiles!from_user_id(
+            id,
+            name,
             email,
             dating_profiles (
               bio,
@@ -42,7 +44,7 @@ export default function RequestsPage() {
             )
           )
         `)
-        .eq('receiver_id', session.user.id)
+        .eq('to_user_id', session.user.id)
         .eq('status', 'pending');
 
       if (error) throw error;
@@ -54,17 +56,17 @@ export default function RequestsPage() {
 
       const formattedRequests: MatchRequest[] = data.map((request) => ({
         id: request.id,
-        sender_id: request.sender_id,
+        sender_id: request.from_user_id,
         sender_email: request.sender.email,
         sender_profile: request.sender.dating_profiles[0],
-        compatibility_score: request.compatibility_score,
+        compatibility_score: request.compatibility_score || 0,
         created_at: request.created_at
       }));
 
       setRequests(formattedRequests);
     } catch (error) {
       console.error('Error fetching requests:', error);
-      setMessage({ type: 'error', text: 'Failed to load match requests. Please try again.' });
+      setMessage({ type: 'error', text: 'Failed to load connection requests. Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -73,7 +75,7 @@ export default function RequestsPage() {
   const handleRequest = useCallback(async (requestId: string, action: 'accept' | 'reject') => {
     try {
       const { error } = await supabase
-        .from('dating_matches')
+        .from('dating_connections')
         .update({ status: action === 'accept' ? 'accepted' : 'rejected' })
         .eq('id', requestId);
 

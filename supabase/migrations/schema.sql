@@ -271,9 +271,9 @@ ALTER TABLE public.event_participants ENABLE ROW LEVEL SECURITY;
 CREATE OR REPLACE FUNCTION is_admin()
 RETURNS boolean AS $$
 BEGIN
-    RETURN (auth.jwt() ->> 'email') = 'cl883@snu.edu.in';
+    RETURN (auth.jwt() ->> 'email') = 'an459@snu.edu.in';
 END;
-$$ language plpgsql security definer;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Create policies for events
 DO $$ 
@@ -295,7 +295,7 @@ BEGIN
         USING (
             (is_public = true AND is_approved = true)
             OR
-            (auth.jwt() ->> 'email' = 'cl883@snu.edu.in')
+            (auth.jwt() ->> 'email' = 'an459@snu.edu.in')
         );
     
     CREATE POLICY "Group members can view approved group events"
@@ -307,7 +307,7 @@ BEGIN
                 AND group_members.user_id = auth.uid()
             ) AND is_approved = true)
             OR
-            (auth.jwt() ->> 'email' = 'cl883@snu.edu.in')
+            (auth.jwt() ->> 'email' = 'an459@snu.edu.in')
         );
     
     CREATE POLICY "Users can create events"
@@ -322,20 +322,30 @@ BEGIN
             ))
         );
     
-    CREATE POLICY "Admin can update events"
-        ON events FOR UPDATE
+    CREATE POLICY "Admins can view all events"
+        ON public.events
+        FOR SELECT
         USING (
-            auth.uid() = created_by 
-            OR 
-            auth.jwt() ->> 'email' = 'cl883@snu.edu.in'
+            auth.role() = 'authenticated' AND (
+                auth.uid() = created_by
+                OR (auth.jwt() ->> 'email' = 'an459@snu.edu.in')
+                OR is_public = true
+            )
         );
     
-    CREATE POLICY "Admin can delete events"
-        ON events FOR DELETE
+    CREATE POLICY "Admins can update any event"
+        ON public.events
+        FOR UPDATE
         USING (
-            auth.uid() = created_by 
-            OR 
-            auth.jwt() ->> 'email' = 'cl883@snu.edu.in'
+            auth.uid() = created_by
+            OR (auth.jwt() ->> 'email' = 'an459@snu.edu.in')
+        );
+    
+    CREATE POLICY "Admins can delete any event"
+        ON public.events
+        FOR DELETE
+        USING (
+            auth.jwt() ->> 'email' = 'an459@snu.edu.in'
         );
 END $$;
 
@@ -364,7 +374,7 @@ BEGIN
                         AND group_members.user_id = auth.uid()
                     ) AND events.is_approved = true)
                     OR
-                    (auth.jwt() ->> 'email' = 'cl883@snu.edu.in')
+                    (auth.jwt() ->> 'email' = 'an459@snu.edu.in')
                 )
             )
         );
@@ -393,6 +403,13 @@ BEGIN
     CREATE POLICY "Users can update their participation status"
         ON event_participants FOR UPDATE
         USING (auth.uid() = user_id);
+    
+    CREATE POLICY "Admins can manage participants"
+        ON public.event_participants
+        FOR ALL
+        USING (
+            auth.jwt() ->> 'email' = 'an459@snu.edu.in'
+        );
 END $$;
 
 -- Add index for is_approved column

@@ -8,7 +8,9 @@ import {
   Tag, 
   User, 
   Search,
-  ArrowRight
+  ArrowRight,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
@@ -47,6 +49,12 @@ interface SupportResponse {
 
 interface User {
   id: string;
+}
+
+interface DeleteConfirmation {
+  type: 'post' | 'response';
+  id: string;
+  title?: string;
 }
 
 const CATEGORIES = [
@@ -88,11 +96,16 @@ export default function SupportPage() {
     category: '',
     is_anonymous: false
   });
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
 
   const fetchPosts = useCallback(async () => {
     try {
-      if (!user) return;
+      if (!user) {
+        console.log('No user available for fetching posts');
+        return;
+      }
 
+      console.log('Fetching posts for user:', user.id);
       let query = supabase
         .from('support_posts')
         .select(`
@@ -117,6 +130,7 @@ export default function SupportPage() {
 
       if (error) throw error;
 
+      console.log('Fetched posts:', posts);
       const transformedPosts = posts.map((post): SupportPost => ({
         ...post,
         support_responses: (post.support_responses || [])
@@ -136,6 +150,7 @@ export default function SupportPage() {
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
+      console.log('Loaded user:', user);
       setUser(user);
     };
     getUser();
@@ -213,7 +228,13 @@ export default function SupportPage() {
 
   const handleDeletePost = async (postId: string) => {
     try {
-      if (!user) return;
+      if (!user) {
+        console.log('No user found');
+        return;
+      }
+
+      console.log('Attempting to delete post:', postId);
+      console.log('Current user:', user.id);
 
       const { error } = await supabase
         .from('support_posts')
@@ -221,10 +242,18 @@ export default function SupportPage() {
         .eq('id', postId)
         .eq('created_by', user.id);
 
-      if (error) throw error;
-      fetchPosts();
+      if (error) {
+        console.error('Error deleting post:', error);
+        alert(`Failed to delete post: ${error.message}`);
+        return;
+      }
+
+      console.log('Post deleted successfully');
+      setPosts(currentPosts => currentPosts.filter(post => post.id !== postId));
+      setDeleteConfirmation(null);
     } catch (error) {
-      console.error('Error deleting post:', error);
+      console.error('Error in delete operation:', error);
+      alert('Failed to delete post. Please try again.');
     }
   };
 
@@ -239,9 +268,15 @@ export default function SupportPage() {
         .eq('created_by', user.id);
 
       if (error) throw error;
-      fetchPosts();
+
+      setPosts(currentPosts => currentPosts.map(post => ({
+        ...post,
+        support_responses: post.support_responses?.filter(response => response.id !== responseId) || []
+      })));
+      setDeleteConfirmation(null);
     } catch (error) {
       console.error('Error deleting response:', error);
+      alert('Failed to delete response. Please try again.');
     }
   };
 
@@ -366,13 +401,22 @@ export default function SupportPage() {
                   <motion.button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeletePost(post.id);
+                      console.log('Opening delete confirmation for post:', {
+                        postId: post.id,
+                        userId: user.id,
+                        createdBy: post.created_by
+                      });
+                      setDeleteConfirmation({
+                        type: 'post',
+                        id: post.id,
+                        title: post.title
+                      });
                     }}
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                     className="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-500/10 transition-all"
                   >
-                    <ArrowRight className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" />
                   </motion.button>
                 )}
               </div>
@@ -425,10 +469,13 @@ export default function SupportPage() {
                             </span>
                             {response.created_by === user?.id && (
                               <button
-                                onClick={() => handleDeleteResponse(response.id)}
-                                className="text-red-400 hover:text-red-300 transition-colors"
+                                onClick={() => setDeleteConfirmation({
+                                  type: 'response',
+                                  id: response.id
+                                })}
+                                className="text-red-400 hover:text-red-300 p-1 rounded-lg hover:bg-red-500/10 transition-all"
                               >
-                                <ArrowRight className="w-4 h-4" />
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             )}
                           </div>
@@ -587,6 +634,44 @@ export default function SupportPage() {
                     Post Response
                   </button>
                 </div>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {deleteConfirmation && (
+          <Modal onClose={() => setDeleteConfirmation(null)} maxWidth="max-w-md">
+            <div className="bg-gray-900 p-6 rounded-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <AlertTriangle className="w-6 h-6 text-red-400" />
+                <h3 className="text-lg font-medium">Confirm Delete</h3>
+              </div>
+              <p className="text-gray-400 mb-6">
+                {deleteConfirmation.type === 'post' 
+                  ? `Are you sure you want to delete this post${deleteConfirmation.title ? `: "${deleteConfirmation.title}"` : ''}? This will also delete all responses.`
+                  : 'Are you sure you want to delete this response?'}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirmation(null)}
+                  className="flex-1 px-4 py-2 bg-white/5 text-gray-300 rounded-lg hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    console.log('Confirming delete for:', deleteConfirmation);
+                    if (deleteConfirmation.type === 'post') {
+                      handleDeletePost(deleteConfirmation.id);
+                    } else {
+                      handleDeleteResponse(deleteConfirmation.id);
+                    }
+                  }}
+                  className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           </Modal>

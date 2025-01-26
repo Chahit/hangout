@@ -5,9 +5,14 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Base Tables
 ------------------------------------------
 
--- First, drop all tables in correct order
+-- First, create a temporary table to backup existing profiles
 DO $$ 
 BEGIN
+    -- Create temporary table for profiles backup
+    CREATE TEMP TABLE IF NOT EXISTS profiles_backup AS 
+    SELECT * FROM public.profiles;
+    
+    -- Drop all tables in correct order
     DROP TABLE IF EXISTS public.event_participants CASCADE;
     DROP TABLE IF EXISTS public.events CASCADE;
     DROP TABLE IF EXISTS public.messages CASCADE;
@@ -38,9 +43,89 @@ CREATE TABLE public.profiles (
     batch text DEFAULT '',
     branch text DEFAULT '',
     interests text[] DEFAULT array[]::text[],
+    notification_preferences JSONB DEFAULT jsonb_build_object(
+        'email_notifications', true,
+        'dating_notifications', true,
+        'group_notifications', true,
+        'event_notifications', true,
+        'support_notifications', true
+    ),
+    privacy_settings JSONB DEFAULT jsonb_build_object(
+        'show_online_status', true,
+        'show_last_seen', true,
+        'show_email', true,
+        'show_batch', true,
+        'show_branch', true
+    ),
     updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     CONSTRAINT username_format CHECK (username ~ '^[a-zA-Z0-9_]{3,30}$')
 );
+
+-- Restore profiles from backup
+DO $$
+BEGIN
+    INSERT INTO public.profiles
+    SELECT * FROM profiles_backup
+    ON CONFLICT (id) DO UPDATE
+    SET 
+        username = EXCLUDED.username,
+        name = EXCLUDED.name,
+        email = EXCLUDED.email,
+        batch = EXCLUDED.batch,
+        branch = EXCLUDED.branch,
+        interests = EXCLUDED.interests,
+        notification_preferences = EXCLUDED.notification_preferences,
+        privacy_settings = EXCLUDED.privacy_settings,
+        updated_at = EXCLUDED.updated_at;
+    
+    -- Drop the temporary backup table
+    DROP TABLE IF EXISTS profiles_backup;
+EXCEPTION
+    WHEN undefined_table THEN
+        -- If backup table doesn't exist, that's fine
+        NULL;
+END $$;
+
+-- Create direct_messages table right after profiles
+CREATE TABLE IF NOT EXISTS public.direct_messages (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    sender_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    recipient_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    content text NOT NULL,
+    message_type TEXT CHECK (message_type IN ('regular', 'dating')) DEFAULT 'regular',
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    read_at timestamp with time zone,
+    reactions jsonb DEFAULT '{}'::jsonb,
+    is_read boolean DEFAULT false NOT NULL,
+    CONSTRAINT sender_recipient_different CHECK (sender_id != recipient_id)
+);
+
+-- Enable RLS for direct_messages
+ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for direct_messages
+CREATE POLICY "Users can view their messages"
+    ON public.direct_messages
+    FOR SELECT
+    TO authenticated
+    USING (auth.uid() IN (sender_id, recipient_id));
+
+CREATE POLICY "Users can send messages"
+    ON public.direct_messages
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (auth.uid() = sender_id);
+
+CREATE POLICY "Recipients can update messages"
+    ON public.direct_messages
+    FOR UPDATE
+    TO authenticated
+    USING (auth.uid() = recipient_id);
+
+-- Create indexes for direct_messages
+CREATE INDEX IF NOT EXISTS direct_messages_sender_recipient_idx ON public.direct_messages(sender_id, recipient_id);
+CREATE INDEX IF NOT EXISTS direct_messages_type_idx ON public.direct_messages(message_type);
+CREATE INDEX IF NOT EXISTS direct_messages_created_at_idx ON public.direct_messages(created_at DESC);
 
 -- Create index for username searches
 CREATE INDEX IF NOT EXISTS profiles_username_idx ON profiles(username);
@@ -140,6 +225,8 @@ BEGIN
         batch,
         branch,
         interests,
+        notification_preferences,
+        privacy_settings,
         updated_at
     )
     VALUES (
@@ -150,6 +237,20 @@ BEGIN
         COALESCE(new.raw_user_meta_data->>'batch', '2022'),  -- Set a default batch
         COALESCE(new.raw_user_meta_data->>'branch', 'CSE'),  -- Set a default branch
         array[]::text[],  -- Empty interests array
+        jsonb_build_object(  -- Default notification preferences
+            'email_notifications', true,
+            'dating_notifications', true,
+            'group_notifications', true,
+            'event_notifications', true,
+            'support_notifications', true
+        ),
+        jsonb_build_object(  -- Default privacy settings
+            'show_online_status', true,
+            'show_last_seen', true,
+            'show_email', true,
+            'show_batch', true,
+            'show_branch', true
+        ),
         now()
     );
     RETURN new;
@@ -174,8 +275,25 @@ CREATE TABLE IF NOT EXISTS public.dating_profiles (
     answers JSONB DEFAULT '{}'::jsonb,
     has_completed_profile BOOLEAN DEFAULT false,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     UNIQUE(user_id)
 );
+
+-- Create or replace the trigger function for updated_at
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = timezone('utc'::text, now());
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger for dating_profiles
+DROP TRIGGER IF EXISTS set_dating_profiles_updated_at ON public.dating_profiles;
+CREATE TRIGGER set_dating_profiles_updated_at
+    BEFORE UPDATE ON public.dating_profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_updated_at();
 
 -- Create dating_connections table for matches
 CREATE TABLE IF NOT EXISTS public.dating_connections (
@@ -187,48 +305,57 @@ CREATE TABLE IF NOT EXISTS public.dating_connections (
     UNIQUE(from_user_id, to_user_id)
 );
 
--- Enable RLS for dating profiles
+-- Add type column to existing direct_messages table for dating messages
+ALTER TABLE public.direct_messages 
+ADD COLUMN IF NOT EXISTS message_type TEXT CHECK (message_type IN ('regular', 'dating')) DEFAULT 'regular';
+
+-- Enable Row Level Security
 ALTER TABLE public.dating_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dating_connections ENABLE ROW LEVEL SECURITY;
 
--- Update policies for dating_profiles
-DO $$ 
-BEGIN
-    -- Drop existing policies
-    DROP POLICY IF EXISTS "Users can view dating profiles" ON dating_profiles;
-    DROP POLICY IF EXISTS "Users can manage their own dating profile" ON dating_profiles;
-    DROP POLICY IF EXISTS "Users can create dating profile" ON dating_profiles;
-    DROP POLICY IF EXISTS "Users can delete their own dating profile" ON dating_profiles;
-    
-    -- Create new policies
-    CREATE POLICY "Users can view dating profiles"
-        ON public.dating_profiles 
-        FOR SELECT
-        TO authenticated
-        USING (true);
+-- Policies for dating_profiles
+CREATE POLICY "Users can view their own dating profile"
+    ON public.dating_profiles
+    FOR SELECT
+    TO authenticated
+    USING (auth.uid() = user_id);
 
-    CREATE POLICY "Users can create dating profile"
-        ON public.dating_profiles
-        FOR INSERT
-        TO authenticated
-        WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can create their own dating profile"
+    ON public.dating_profiles
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (auth.uid() = user_id);
 
-    CREATE POLICY "Users can update own dating profile"
-        ON public.dating_profiles
-        FOR UPDATE
-        TO authenticated
-        USING (auth.uid() = user_id);
+CREATE POLICY "Users can update their own dating profile"
+    ON public.dating_profiles
+    FOR UPDATE
+    TO authenticated
+    USING (auth.uid() = user_id);
 
-    CREATE POLICY "Users can delete own dating profile"
-        ON public.dating_profiles
-        FOR DELETE
-        TO authenticated
-        USING (auth.uid() = user_id);
-END $$;
+-- Policies for dating_connections
+CREATE POLICY "Users can view their connections"
+    ON public.dating_connections
+    FOR SELECT
+    TO authenticated
+    USING (auth.uid() IN (from_user_id, to_user_id));
+
+CREATE POLICY "Users can create connections"
+    ON public.dating_connections
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (auth.uid() = from_user_id);
+
+CREATE POLICY "Users can update their received connections"
+    ON public.dating_connections
+    FOR UPDATE
+    TO authenticated
+    USING (auth.uid() = to_user_id);
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS dating_profiles_user_id_idx ON public.dating_profiles(user_id);
 CREATE INDEX IF NOT EXISTS dating_profiles_gender_idx ON public.dating_profiles(gender);
 CREATE INDEX IF NOT EXISTS dating_profiles_looking_for_idx ON public.dating_profiles(looking_for);
+CREATE INDEX IF NOT EXISTS dating_profiles_completed_idx ON public.dating_profiles(has_completed_profile);
 CREATE INDEX IF NOT EXISTS dating_connections_from_user_idx ON public.dating_connections(from_user_id);
 CREATE INDEX IF NOT EXISTS dating_connections_to_user_idx ON public.dating_connections(to_user_id);
 CREATE INDEX IF NOT EXISTS dating_connections_status_idx ON public.dating_connections(status);
@@ -682,10 +809,46 @@ BEGIN
 END $$;
 
 
-
 -- First, clean up any existing tables to start fresh
 DROP TABLE IF EXISTS public.dating_profiles CASCADE;
 DROP TABLE IF EXISTS public.dating_connections CASCADE;
+DROP TABLE IF EXISTS public.direct_messages CASCADE;
+
+-- Create direct_messages table first
+CREATE TABLE IF NOT EXISTS public.direct_messages (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    sender_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    recipient_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    content text NOT NULL,
+    message_type TEXT CHECK (message_type IN ('regular', 'dating')) DEFAULT 'regular',
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    read_at timestamp with time zone,
+    reactions jsonb DEFAULT '{}'::jsonb,
+    is_read boolean DEFAULT false NOT NULL,
+    CONSTRAINT sender_recipient_different CHECK (sender_id != recipient_id)
+);
+
+-- Enable RLS for direct_messages
+ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for direct_messages
+CREATE POLICY "Users can view their messages"
+    ON public.direct_messages
+    FOR SELECT
+    TO authenticated
+    USING (auth.uid() IN (sender_id, recipient_id));
+
+CREATE POLICY "Users can send messages"
+    ON public.direct_messages
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (auth.uid() = sender_id);
+
+CREATE POLICY "Recipients can update messages"
+    ON public.direct_messages
+    FOR UPDATE
+    TO authenticated
+    USING (auth.uid() = recipient_id);
 
 -- Create dating_profiles table with essential fields
 CREATE TABLE IF NOT EXISTS public.dating_profiles (
@@ -698,6 +861,7 @@ CREATE TABLE IF NOT EXISTS public.dating_profiles (
     answers JSONB DEFAULT '{}'::jsonb,
     has_completed_profile BOOLEAN DEFAULT false,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     UNIQUE(user_id)
 );
 
@@ -720,35 +884,48 @@ ALTER TABLE public.dating_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dating_connections ENABLE ROW LEVEL SECURITY;
 
 -- Policies for dating_profiles
-CREATE POLICY "Users can view dating profiles"
-    ON public.dating_profiles FOR SELECT
-    USING (true);
+CREATE POLICY "Users can view their own dating profile"
+    ON public.dating_profiles
+    FOR SELECT
+    TO authenticated
+    USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can manage their own dating profile"
-    ON public.dating_profiles FOR ALL
-    USING (auth.uid() = user_id OR auth.uid() IS NULL)
-    WITH CHECK (auth.uid() = user_id OR auth.uid() IS NULL);
+CREATE POLICY "Users can create their own dating profile"
+    ON public.dating_profiles
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own dating profile"
+    ON public.dating_profiles
+    FOR UPDATE
+    TO authenticated
+    USING (auth.uid() = user_id);
 
 -- Policies for dating_connections
 CREATE POLICY "Users can view their connections"
-    ON public.dating_connections FOR SELECT
-    USING (
-        auth.uid() = from_user_id 
-        OR auth.uid() = to_user_id
-    );
+    ON public.dating_connections
+    FOR SELECT
+    TO authenticated
+    USING (auth.uid() IN (from_user_id, to_user_id));
 
 CREATE POLICY "Users can create connections"
-    ON public.dating_connections FOR INSERT
+    ON public.dating_connections
+    FOR INSERT
+    TO authenticated
     WITH CHECK (auth.uid() = from_user_id);
 
 CREATE POLICY "Users can update their received connections"
-    ON public.dating_connections FOR UPDATE
+    ON public.dating_connections
+    FOR UPDATE
+    TO authenticated
     USING (auth.uid() = to_user_id);
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS dating_profiles_user_id_idx ON public.dating_profiles(user_id);
 CREATE INDEX IF NOT EXISTS dating_profiles_gender_idx ON public.dating_profiles(gender);
 CREATE INDEX IF NOT EXISTS dating_profiles_looking_for_idx ON public.dating_profiles(looking_for);
+CREATE INDEX IF NOT EXISTS dating_profiles_completed_idx ON public.dating_profiles(has_completed_profile);
 CREATE INDEX IF NOT EXISTS dating_connections_from_user_idx ON public.dating_connections(from_user_id);
 CREATE INDEX IF NOT EXISTS dating_connections_to_user_idx ON public.dating_connections(to_user_id);
 CREATE INDEX IF NOT EXISTS dating_connections_status_idx ON public.dating_connections(status);
@@ -848,7 +1025,7 @@ BEGIN
                 VALUES (
                     NEW.user_id,
                     COALESCE(user_data.email, ''),
-                    COALESCE(user_data.name, split_part(COALESCE(user_data.email, ''), '@', 1), 'Anonymous'),
+                    COALESCE(user_data.name, split_part(COALESCE(user_data.email, ''), '@', 1)),
                     final_username,
                     '2022',  -- Default batch
                     'CSE',   -- Default branch
@@ -1352,7 +1529,7 @@ BEGIN
                 VALUES (
                     NEW.user_id,
                     COALESCE(user_data.email, ''),
-                    COALESCE(user_data.name, split_part(COALESCE(user_data.email, ''), '@', 1), 'Anonymous'),
+                    COALESCE(user_data.name, split_part(COALESCE(user_data.email, ''), '@', 1)),
                     final_username,
                     '2022',  -- Default batch
                     'CSE',   -- Default branch

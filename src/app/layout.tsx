@@ -6,8 +6,12 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CollegeConnect",
-  description: "Connect with your college community",
+  title: "SNU Hangout",
+  description: "Your Gen Z social hub for campus life at SNU",
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({

@@ -12,13 +12,13 @@ interface DirectMessage {
   content: string;
   created_at: string;
   sender_id: string;
-  receiver_id: string;
+  recipient_id: string;
   sender: {
     id: string;
     username: string;
     name: string;
   };
-  receiver: {
+  recipient: {
     id: string;
     username: string;
     name: string;
@@ -57,19 +57,24 @@ export default function MessagesPage() {
             content,
             created_at,
             sender_id,
-            receiver_id,
+            recipient_id,
             sender:profiles!direct_messages_sender_id_fkey(id, username, name),
-            receiver:profiles!direct_messages_receiver_id_fkey(id, username, name)
+            recipient:profiles!direct_messages_recipient_id_fkey(id, username, name)
           `)
-          .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+          .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
           .order('created_at', { ascending: false })
           .returns<DirectMessage[]>();
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error fetching recent chats:', error);
+          throw error;
+        }
 
         // Process and deduplicate chats
         const processedChats = (chats || []).reduce((acc: Chat[], message: DirectMessage) => {
-          const otherUser = message.sender.id === user.id ? message.receiver : message.sender;
+          const otherUser = message.sender_id === user.id 
+            ? message.recipient
+            : message.sender;
           
           // Check if we already have a chat with this user
           const existingChat = acc.find(chat => chat.user.id === otherUser.id);

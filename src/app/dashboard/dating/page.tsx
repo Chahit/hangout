@@ -16,14 +16,12 @@ interface DatingProfile {
   answers: Record<string, string>;
   has_completed_profile: boolean;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
-
-type SupabaseClient = ReturnType<typeof createClientComponentClient<Database>>;
 
 export default function DatingPage() {
   const router = useRouter();
-  const supabase: SupabaseClient = createClientComponentClient<Database>();
+  const supabase = createClientComponentClient<Database>();
   const [profile, setProfile] = useState<DatingProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -35,28 +33,49 @@ export default function DatingPage() {
         return;
       }
 
+      // Simplified query with proper error handling
       const { data: profile, error } = await supabase
         .from('dating_profiles')
-        .select('*')
+        .select('id, user_id, gender, looking_for, bio, interests, answers, has_completed_profile, created_at')
         .eq('user_id', session.user.id)
-        .single();
+        .maybeSingle();
 
+      // Handle case where profile doesn't exist
       if (error && error.code !== 'PGRST116') {
+        console.error('Profile fetch error:', error);
         throw error;
       }
 
-      setProfile(profile);
+      if (!profile) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      // Ensure proper typing of the response
+      const typedProfile: DatingProfile = {
+        id: profile.id,
+        user_id: profile.user_id,
+        gender: profile.gender as 'male' | 'female',
+        looking_for: profile.looking_for as 'male' | 'female',
+        bio: profile.bio,
+        interests: profile.interests || [],
+        answers: profile.answers || {},
+        has_completed_profile: profile.has_completed_profile || false,
+        created_at: profile.created_at
+      };
+
+      setProfile(typedProfile);
 
       // Handle routing based on profile state
-      if (profile) {
-        if (!profile.has_completed_profile) {
-          router.push('/dashboard/dating/profile');
-        } else {
-          router.push('/dashboard/dating/matches');
-        }
+      if (typedProfile.has_completed_profile) {
+        router.push('/dashboard/dating/matches');
+      } else if (Object.keys(typedProfile.answers || {}).length > 0) {
+        router.push('/dashboard/dating/profile');
       }
     } catch (error) {
       console.error('Error checking profile:', error);
+      setProfile(null);
     } finally {
       setLoading(false);
     }
@@ -70,22 +89,53 @@ export default function DatingPage() {
         return;
       }
 
-      const { error } = await supabase
+      // Simplified query with proper error handling
+      const { data: existingProfile, error: checkError } = await supabase
         .from('dating_profiles')
-        .insert({
-          user_id: session.user.id,
-          gender,
-          looking_for: lookingFor,
-          has_completed_profile: false,
-          answers: {}
-        });
+        .select('id')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
 
-      if (error) throw error;
-      await checkProfile();
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      if (existingProfile) {
+        const { error: updateError } = await supabase
+          .from('dating_profiles')
+          .update({
+            gender,
+            looking_for: lookingFor,
+            has_completed_profile: false
+          })
+          .eq('id', existingProfile.id)
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('dating_profiles')
+          .insert({
+            user_id: session.user.id,
+            gender,
+            looking_for: lookingFor,
+            has_completed_profile: false,
+            answers: {},
+            interests: []
+          })
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+      }
+
+      router.push('/dashboard/dating/profile');
     } catch (error) {
       console.error('Error creating profile:', error);
+      alert('Failed to create profile. Please try again.');
     }
-  }, [supabase, router, checkProfile]);
+  }, [supabase, router]);
 
   useEffect(() => {
     checkProfile();

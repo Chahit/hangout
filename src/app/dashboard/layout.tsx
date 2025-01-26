@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Logo } from '@/components/Logo';
 import {
   LayoutDashboard,
   Users,
@@ -18,7 +19,8 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  Menu
+  Menu,
+  X
 } from 'lucide-react';
 
 const menuItems = [
@@ -31,15 +33,6 @@ const menuItems = [
   { name: 'Memes', icon: SmilePlus, href: '/dashboard/memes', color: 'orange' },
   { name: 'PeerSupport', icon: HeartHandshake, href: '/dashboard/support', color: 'teal' },
   { name: 'Settings', icon: Settings, href: '/dashboard/settings', color: 'gray' }
-];
-
-// Mobile navigation items (limited to main features)
-const mobileNavItems = [
-  { name: 'Home', icon: LayoutDashboard, href: '/dashboard', color: 'purple' },
-  { name: 'Groups', icon: Users, href: '/dashboard/groups', color: 'blue' },
-  { name: 'Messages', icon: MessageSquare, href: '/dashboard/messages', color: 'pink' },
-  { name: 'Events', icon: Calendar, href: '/dashboard/events', color: 'green' },
-  { name: 'More', icon: Menu, href: '#', color: 'gray' }
 ];
 
 export default function DashboardLayout({
@@ -88,11 +81,8 @@ export default function DashboardLayout({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex items-center gap-2"
               >
-                <h1 className="text-xl font-clash-display font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-purple-600 text-transparent bg-clip-text">
-                  SNU Hangout
-                </h1>
+                <Logo />
               </motion.div>
             )}
           </AnimatePresence>
@@ -167,33 +157,13 @@ export default function DashboardLayout({
         </div>
       </motion.div>
 
-      {/* Mobile Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-white/10 z-50 md:hidden">
-        <div className="flex justify-around items-center p-2">
-          {mobileNavItems.map((item) => {
-            const isActive = pathname === item.href;
-            return (
-              <Link key={item.name} href={item.href}>
-                <motion.div
-                  whileTap={{ scale: 0.95 }}
-                  className="flex flex-col items-center gap-1 p-2"
-                >
-                  <item.icon 
-                    className={`w-6 h-6 ${
-                      isActive ? `text-${item.color}-500` : 'text-gray-400'
-                    }`}
-                  />
-                  <span className={`text-xs ${
-                    isActive ? `text-${item.color}-500` : 'text-gray-400'
-                  }`}>
-                    {item.name}
-                  </span>
-                </motion.div>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setIsMobileMenuOpen(true)}
+        className="fixed top-4 right-4 p-2 bg-white/5 rounded-lg md:hidden z-50"
+      >
+        <Menu className="w-6 h-6 text-gray-400" />
+      </button>
 
       {/* Mobile Menu Overlay */}
       <AnimatePresence>
@@ -209,19 +179,35 @@ export default function DashboardLayout({
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              className="absolute right-0 top-0 bottom-0 w-64 bg-gray-900 p-4"
+              transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+              className="absolute right-0 top-0 bottom-0 w-72 bg-black border-l border-white/10 p-4 overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="space-y-4">
+              {/* Mobile Menu Header */}
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/10">
+                <Logo />
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-2 hover:bg-white/5 rounded-lg"
+                >
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+
+              {/* Mobile Menu Items */}
+              <div className="space-y-2">
                 {menuItems.map((item) => {
                   const isActive = pathname === item.href;
                   return (
                     <Link key={item.name} href={item.href} onClick={() => setIsMobileMenuOpen(false)}>
                       <motion.div
+                        whileHover={{ x: 4 }}
                         whileTap={{ scale: 0.95 }}
-                        className={`flex items-center gap-3 p-3 rounded-xl ${
-                          isActive ? `bg-${item.color}-500/10 text-${item.color}-500` : 'text-gray-400'
-                        }`}
+                        className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200
+                          ${isActive 
+                            ? `bg-${item.color}-500/10 text-${item.color}-500` 
+                            : 'hover:bg-white/5 text-gray-400 hover:text-white'
+                          }`}
                       >
                         <item.icon className={`w-5 h-5 ${isActive ? `text-${item.color}-500` : ''}`} />
                         <span className="font-medium">{item.name}</span>
@@ -229,6 +215,17 @@ export default function DashboardLayout({
                     </Link>
                   );
                 })}
+
+                {/* Mobile Menu Logout */}
+                <motion.button
+                  onClick={handleLogout}
+                  whileHover={{ x: 4 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 text-gray-400 hover:text-white transition-all duration-200 cursor-pointer w-full mt-4"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span className="font-medium">Logout</span>
+                </motion.button>
               </div>
             </motion.div>
           </motion.div>
@@ -236,7 +233,7 @@ export default function DashboardLayout({
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className={`flex-1 transition-all duration-200 ${isCollapsed ? 'md:ml-20' : 'md:ml-64'} mb-20 md:mb-0`}>
+      <main className={`flex-1 transition-all duration-200 ${isCollapsed ? 'md:ml-20' : 'md:ml-64'} p-4`}>
         {children}
       </main>
     </div>

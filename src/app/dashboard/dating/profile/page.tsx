@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { motion } from 'framer-motion';
-import { DATING_QUESTIONS } from '../questions';
+import { DATING_QUESTIONS, type QuestionOption } from '../questions';
 import { useRouter } from 'next/navigation';
 import type { Database } from '@/lib/database.types';
 import { Loader2 } from 'lucide-react';
@@ -11,8 +11,8 @@ import { Loader2 } from 'lucide-react';
 export default function ProfilePage() {
   const router = useRouter();
   const supabase = createClientComponentClient<Database>();
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [currentQuestion, setCurrentQuestion] = useState<number>(0);
+  const [answers, setAnswers] = useState<Record<number, QuestionOption>>({});
   const [loading, setLoading] = useState(true);
 
   const checkProfile = useCallback(async () => {
@@ -23,16 +23,51 @@ export default function ProfilePage() {
         return;
       }
 
-      const { data: profile, error } = await supabase
+      // First, check if a dating profile exists
+      const { data: existingProfile, error: profileError } = await supabase
         .from('dating_profiles')
         .select('*')
         .eq('user_id', session.user.id)
         .single();
 
-      if (error) throw error;
+      if (profileError && profileError.code !== 'PGRST116') {
+        throw profileError;
+      }
 
-      if (profile?.has_completed_profile) {
-        router.push('/dashboard/dating/matches');
+      // If no profile exists, create one
+      if (!existingProfile) {
+        const { error: createError } = await supabase
+          .from('dating_profiles')
+          .insert({
+            user_id: session.user.id,
+            answers: {},
+            has_completed_profile: false
+          });
+
+        if (createError) throw createError;
+        setCurrentQuestion(0);
+        setAnswers({});
+      } else {
+        // If profile exists and is completed, redirect to matches
+        if (existingProfile.has_completed_profile) {
+          router.push('/dashboard/dating/matches');
+          return;
+        }
+
+        // If profile exists but isn't completed, load existing answers
+        if (existingProfile.answers) {
+          const savedAnswers = existingProfile.answers as Record<number, QuestionOption>;
+          setAnswers(savedAnswers);
+          
+          // Find the first unanswered question
+          let nextUnansweredQuestion = 0;
+          while (nextUnansweredQuestion < DATING_QUESTIONS.length && 
+                 savedAnswers[nextUnansweredQuestion] !== undefined) {
+            nextUnansweredQuestion++;
+          }
+          
+          setCurrentQuestion(Math.min(nextUnansweredQuestion, DATING_QUESTIONS.length - 1));
+        }
       }
     } catch (error) {
       console.error('Error checking profile:', error);
@@ -41,7 +76,7 @@ export default function ProfilePage() {
     }
   }, [supabase, router]);
 
-  const completeProfile = useCallback(async (finalAnswers: Record<number, string>) => {
+  const completeProfile = useCallback(async (finalAnswers: Record<number, QuestionOption>) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -49,29 +84,81 @@ export default function ProfilePage() {
         return;
       }
 
+      // Check if all required questions are answered
+      const isComplete = Object.keys(finalAnswers).length === DATING_QUESTIONS.length;
+      
+      // Validate each answer against the question options
+      const hasValidAnswers = Object.entries(finalAnswers).every(([questionIndex, answer]) => {
+        const question = DATING_QUESTIONS[parseInt(questionIndex)];
+        if (!question) {
+          console.error(`Question at index ${questionIndex} not found`);
+          return false;
+        }
+        const isValidAnswer = question.options.includes(answer);
+        if (!isValidAnswer) {
+          console.error(`Invalid answer for question ${question.id}: ${answer}`);
+          console.error('Valid options are:', question.options);
+        }
+        return isValidAnswer;
+      });
+
+      if (!hasValidAnswers) {
+        console.error('Invalid answers:', finalAnswers);
+        throw new Error('Some answers are invalid. Please check your responses.');
+      }
+      
+      // Convert array indices to question IDs before saving
+      const answersWithCorrectIds = Object.entries(finalAnswers).reduce((acc, [index, answer]) => {
+        const question = DATING_QUESTIONS[parseInt(index)];
+        if (question) {
+          acc[question.id] = answer;
+        }
+        return acc;
+      }, {} as Record<number, QuestionOption>);
+
       const { error } = await supabase
         .from('dating_profiles')
         .update({
-          answers: finalAnswers,
-          has_completed_profile: true
+          answers: answersWithCorrectIds,
+          has_completed_profile: isComplete && hasValidAnswers
         })
         .eq('user_id', session.user.id);
 
-      if (error) throw error;
-      router.push('/dashboard/dating/matches');
+      if (error) {
+        console.error('Update error:', error);
+        throw error;
+      }
+
+      if (isComplete && hasValidAnswers) {
+        router.push('/dashboard/dating/matches');
+      }
     } catch (error) {
       console.error('Error completing profile:', error);
+      throw error;
     }
   }, [supabase, router]);
 
-  const submitAnswer = useCallback(async (answer: string) => {
-    const newAnswers = { ...answers, [currentQuestion]: answer };
-    setAnswers(newAnswers);
+  const submitAnswer = useCallback(async (answer: QuestionOption) => {
+    try {
+      const newAnswers = { ...answers, [currentQuestion]: answer };
+      setAnswers(newAnswers);
 
-    if (currentQuestion < DATING_QUESTIONS.length - 1) {
-      setCurrentQuestion(prev => prev + 1);
-    } else {
+      // Save progress after each answer
       await completeProfile(newAnswers);
+
+      // Move to next question if available
+      if (currentQuestion < DATING_QUESTIONS.length - 1) {
+        setCurrentQuestion(prev => Math.min(prev + 1, DATING_QUESTIONS.length - 1));
+      } else {
+        // All questions answered, validate final answers
+        const allAnswered = Object.keys(newAnswers).length === DATING_QUESTIONS.length;
+        if (allAnswered) {
+          await completeProfile(newAnswers);
+        }
+      }
+    } catch (error) {
+      console.error('Error submitting answer:', error);
+      alert(error instanceof Error ? error.message : 'Failed to save answer. Please try again.');
     }
   }, [currentQuestion, answers, completeProfile]);
 
@@ -88,6 +175,13 @@ export default function ProfilePage() {
   }
 
   const currentQ = DATING_QUESTIONS[currentQuestion];
+  
+  // Handle case where current question is undefined
+  if (!currentQ) {
+    console.error('Question index out of bounds:', currentQuestion);
+    router.push('/dashboard/dating/matches');
+    return null;
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -124,7 +218,7 @@ export default function ProfilePage() {
 
         {currentQuestion > 0 && (
           <button
-            onClick={() => setCurrentQuestion(prev => prev - 1)}
+            onClick={() => setCurrentQuestion(prev => Math.max(0, prev - 1))}
             className="mt-6 text-gray-400 hover:text-white transition"
           >
             Go back to previous question
