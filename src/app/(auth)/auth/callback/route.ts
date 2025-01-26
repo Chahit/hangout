@@ -15,10 +15,8 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL('/auth?error=no_code', siteUrl));
     }
 
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ 
-      cookies: () => cookieStore 
-    });
+    // Create a Supabase client with the cookies
+    const supabase = createRouteHandlerClient({ cookies });
 
     // Exchange the code for a session
     const { data: { session }, error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
@@ -47,21 +45,7 @@ export async function GET(request: Request) {
 
     // Redirect based on profile existence
     const redirectTo = profile ? '/dashboard' : '/onboarding';
-    
-    // Create the redirect response
-    const response = NextResponse.redirect(new URL(redirectTo, siteUrl));
-
-    // Set the cookies directly on the response
-    const allCookies = cookieStore.getAll();
-    allCookies.forEach(cookie => {
-      response.cookies.set({
-        name: cookie.name,
-        value: cookie.value,
-        ...cookie
-      });
-    });
-
-    return response;
+    return NextResponse.redirect(new URL(redirectTo, siteUrl));
 
   } catch (error) {
     console.error('Callback error:', error);
