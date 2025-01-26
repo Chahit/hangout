@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useSearchParams } from 'next/navigation';
 
-export default function AuthPage() {
+// Separate component that uses useSearchParams
+function AuthContent() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,5 +110,18 @@ export default function AuthPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+// Main component with Suspense boundary
+export default function AuthPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="text-zinc-400">Loading...</div>
+      </div>
+    }>
+      <AuthContent />
+    </Suspense>
   );
 } 
