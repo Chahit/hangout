@@ -27,15 +27,17 @@ export default function AuthForm() {
         provider: 'google',
         options: {
           queryParams: {
-            hd: 'snu.edu.in', // Restrict to SNU domain
             access_type: 'offline',
             prompt: 'consent',
+            hd: 'snu.edu.in',
           },
-          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+          scopes: 'email profile'
         }
       });
 
       if (error) throw error;
+      console.log('Redirecting to Google consent page...');
     } catch (error) {
       console.error('Google Sign-In error:', error);
       setError(error instanceof Error ? error.message : 'Failed to sign in with Google');
