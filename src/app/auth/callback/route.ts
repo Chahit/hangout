@@ -34,14 +34,21 @@ export async function GET(request: Request) {
     }
 
     // Check if user has a profile
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', session.user.id)
       .single();
 
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error('Profile Error:', profileError.message);
+      return NextResponse.redirect(new URL('/auth?error=profile_error', siteUrl));
+    }
+
     // Redirect based on profile existence
     const redirectTo = profile ? '/dashboard' : '/onboarding';
+    
+    // Create a response with the redirect
     const response = NextResponse.redirect(new URL(redirectTo, siteUrl));
 
     return response;
