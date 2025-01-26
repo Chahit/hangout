@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   
   console.log('Auth Callback Debug:');
   console.log('- Request URL:', request.url);
-  console.log('- Code:', code);
+  console.log('- Code present:', !!code);
   console.log('- Site URL:', siteUrl);
 
   if (!code) {
@@ -28,10 +28,6 @@ export async function GET(request: Request) {
   try {
     const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    
-    // Log cookies in a way that works with Next.js
-    const cookieList = cookieStore.getAll();
-    console.log('- Cookies:', cookieList.map(c => `${c.name}`).join(', '));
     
     console.log('- Attempting to exchange code for session...');
     const { data: session, error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
