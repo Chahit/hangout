@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     }
 
     // Check if user exists in profiles table
-    const { data: profile, error: profileError } = await supabase
+    const { error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', session.user.id)
@@ -69,4 +69,4 @@ export async function GET(request: Request) {
       )}`
     );
   }
-} 
+}
