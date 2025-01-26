@@ -1,17 +1,12 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { Providers } from "./providers";
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { Providers } from './providers';
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ['latin'] });
 
-export const metadata: Metadata = {
-  title: "SNU Hangout",
-  description: "Your Gen Z social hub for campus life at SNU",
-  icons: {
-    icon: '/logo.png',
-    apple: '/logo.png',
-  },
+export const metadata = {
+  title: 'SNU Hangout',
+  description: 'Your campus, your community, your vibe',
 };
 
 export default function RootLayout({
@@ -20,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <Providers>
           {children}

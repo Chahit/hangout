@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { motion } from 'framer-motion';
 import { Sparkles, Mail } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 
 // Floating background shapes component
 const FloatingShapes = () => (
@@ -37,132 +38,119 @@ const FloatingShapes = () => (
   </div>
 );
 
-const AuthPage = () => {
+export default function AuthPage() {
   const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const supabase = createClientComponentClient();
-
-  const validateEmail = (email: string) => {
-    return email.toLowerCase().endsWith('@snu.edu.in');
-  };
+  const [success, setSuccess] = useState(false);
+  const searchParams = useSearchParams();
+  
+  useEffect(() => {
+    // Handle auth errors
+    const errorParam = searchParams?.get('error');
+    if (errorParam) {
+      switch (errorParam) {
+        case 'no_code':
+          setError('Authentication code missing. Please try again.');
+          break;
+        case 'no_session':
+          setError('Unable to create session. Please try again.');
+          break;
+        case 'exchange_failed':
+          setError('Failed to complete authentication. Please try again.');
+          break;
+        case 'callback_error':
+          setError('Authentication process failed. Please try again.');
+          break;
+        default:
+          setError(decodeURIComponent(errorParam));
+      }
+    }
+  }, [searchParams]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setError(null);
-
-    if (!validateEmail(email)) {
-      setError('Please use your SNU email address (@snu.edu.in)');
-      setIsLoading(false);
-      return;
-    }
+    setSuccess(false);
+    setLoading(true);
 
     try {
+      if (!email.endsWith('@snu.edu.in')) {
+        setError('Please use your SNU email address.');
+        setLoading(false);
+        return;
+      }
+
+      const supabase = createClientComponentClient();
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/auth/callback`,
-          data: { email }
+          emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
         },
       });
 
       if (error) throw error;
-      
-      setError('Check your email for the magic link!');
+
+      setSuccess(true);
     } catch (error) {
-      setError('Error sending magic link. Please try again.');
-      console.error('Error:', error);
+      console.error('Sign in error:', error);
+      setError('Failed to send magic link. Please try again.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black font-cabinet-grotesk p-4">
-      <FloatingShapes />
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md space-y-8"
-      >
-        <div className="text-center">
-          <motion.h1 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="text-4xl md:text-5xl font-clash-display font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-purple-600 text-transparent bg-clip-text"
-          >
-            SNU Hangout
-          </motion.h1>
-          <motion.p 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="mt-3 text-gray-400 text-sm md:text-base"
-          >
-            Your campus, your community, your vibe
-          </motion.p>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background">
+      <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+        <div className="flex flex-col space-y-2 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+          <p className="text-sm text-muted-foreground">
+            Enter your email to sign in
+          </p>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="glass-morphism p-6 md:p-8 rounded-2xl space-y-6"
-        >
-          <form onSubmit={handleSignIn} className="space-y-4">
-            <div>
-              <label htmlFor="email" className="flex items-center gap-2 text-sm font-medium mb-2 text-gray-300">
-                <Mail className="w-4 h-4" />
-                SNU Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                className="w-full px-4 py-3 bg-white/5 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-sm md:text-base"
-                placeholder="your.name@snu.edu.in"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
-                pattern=".+@snu\.edu\.in"
-                title="Please enter your SNU email address"
-              />
+        {error && (
+          <div className="rounded-md bg-destructive/15 p-3">
+            <div className="flex">
+              <div className="flex-1 text-sm text-destructive">{error}</div>
             </div>
+          </div>
+        )}
 
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`text-sm text-center p-3 rounded-xl ${
-                  error.includes('Error') || error.includes('Please use')
-                    ? 'bg-red-500/10 text-red-500'
-                    : 'bg-green-500/10 text-green-500'
+        {success ? (
+          <div className="rounded-md bg-emerald-50 p-3">
+            <div className="flex">
+              <div className="flex-1 text-sm text-emerald-500">
+                Check your email for the magic link!
+              </div>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSignIn}>
+            <div className="grid gap-2">
+              <div className="grid gap-1">
+                <input
+                  type="email"
+                  placeholder="name.lastname@snu.edu.in"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full rounded-md border p-2"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className={`w-full rounded-md bg-primary p-2 text-white ${
+                  loading ? 'opacity-50' : ''
                 }`}
               >
-                {error}
-              </motion.div>
-            )}
-
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 transition-all text-sm md:text-base flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4" />
-              {isLoading ? 'Sending...' : 'Send Magic Link'}
-            </motion.button>
+                {loading ? 'Sending...' : 'Send Magic Link'}
+              </button>
+            </div>
           </form>
-        </motion.div>
-      </motion.div>
+        )}
+      </div>
     </div>
   );
-}
-
-export default AuthPage; 
+} 
