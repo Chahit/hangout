@@ -2,6 +2,8 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
@@ -17,10 +19,22 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Create Supabase client
+    // Create Supabase client with cookie store
     const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    
+    const supabase = createRouteHandlerClient({ 
+      cookies: () => cookieStore 
+    }, {
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    });
+
+    // Get the code verifier cookie
+    const pkceVerifier = cookieStore.get('supabase-code-verifier')?.value;
+    if (!pkceVerifier) {
+      console.error('No PKCE verifier found in cookies');
+      return NextResponse.redirect(new URL('/auth?error=invalid_pkce', siteUrl));
+    }
+
     // Exchange the code for a session
     const { data: { session }, error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
 
