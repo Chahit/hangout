@@ -15,10 +15,13 @@ export async function GET(request: Request) {
   // Get the site URL from environment variable
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
   
-  console.log('Auth Callback Debug:');
-  console.log('- Request URL:', request.url);
-  console.log('- Code present:', !!code);
+  // More detailed logging
+  console.log('=== Auth Callback Debug ===');
+  console.log('Request details:');
+  console.log('- URL:', request.url);
+  console.log('- Code:', code?.substring(0, 10) + '...');
   console.log('- Site URL:', siteUrl);
+  console.log('- Headers:', Object.fromEntries(request.headers));
 
   if (!code) {
     console.error('No code provided in callback');
@@ -26,46 +29,53 @@ export async function GET(request: Request) {
   }
 
   try {
+    console.log('Creating Supabase client...');
     const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
-    console.log('- Attempting to exchange code for session...');
+    console.log('Exchanging code for session...');
     const { data: session, error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
     
     if (sessionError) {
-      console.error('Error exchanging code for session:', sessionError.message);
-      console.error('Error details:', sessionError);
+      console.error('Session Error:', {
+        message: sessionError.message,
+        status: sessionError.status,
+        name: sessionError.name
+      });
       return NextResponse.redirect(new URL('/auth', siteUrl), { headers });
     }
     
-    console.log('- Session exchange successful:', !!session);
-    console.log('- User ID:', session?.user?.id);
+    console.log('Session created successfully');
+    console.log('- User:', session?.user?.email);
 
     // Check if user has completed onboarding
-    console.log('- Fetching user profile...');
+    console.log('Fetching user profile...');
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .single();
 
     if (profileError) {
-      console.error('Error fetching profile:', profileError.message);
-      console.error('Error details:', profileError);
+      console.error('Profile Error:', {
+        message: profileError.message,
+        code: profileError.code,
+        details: profileError.details
+      });
     }
     
-    console.log('- Profile exists:', !!profile);
+    console.log('Profile check complete:', !!profile);
 
     // If no profile exists, redirect to onboarding
     if (!profile) {
-      console.log('- Redirecting to onboarding...');
+      console.log('No profile found - redirecting to onboarding');
       return NextResponse.redirect(new URL('/onboarding', siteUrl), { headers });
     }
 
     // If profile exists, redirect to dashboard
-    console.log('- Redirecting to dashboard...');
+    console.log('Profile exists - redirecting to dashboard');
     return NextResponse.redirect(new URL('/dashboard', siteUrl), { headers });
   } catch (error) {
-    console.error('Unexpected error in callback:', error);
+    console.error('Unexpected error:', error);
     return NextResponse.redirect(new URL('/auth', siteUrl), { headers });
   }
 } 
