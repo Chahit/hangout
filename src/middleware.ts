@@ -14,41 +14,29 @@ export async function middleware(req: NextRequest) {
   const isPublicRoute = req.nextUrl.pathname === "/";
   const isOnboardingRoute = req.nextUrl.pathname === "/onboarding";
 
-  // Allow callback route to proceed without redirects
-  if (req.nextUrl.pathname === "/auth/callback") {
+  // Always allow these routes to proceed without any checks
+  if (isAuthRoute || isPublicRoute || isOnboardingRoute) {
     return res;
   }
 
+  // If user is not signed in and trying to access protected route
+  if (!session) {
+    const redirectUrl = new URL("/auth", req.url);
+    redirectUrl.searchParams.set("next", req.nextUrl.pathname);
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  // If signed in but no profile, redirect to onboarding
   if (session?.user) {
-    // Check if profile exists and is complete
     const { data: profile } = await supabase
       .from('profiles')
       .select('id, batch, branch, username')
       .eq('id', session.user.id)
       .single();
 
-    // If no profile exists or profile is incomplete, redirect to onboarding
-    // unless they're already on the onboarding page
-    if ((!profile || !profile.batch || !profile.branch || !profile.username) && !isOnboardingRoute) {
+    if (!profile || !profile.batch || !profile.branch || !profile.username) {
       return NextResponse.redirect(new URL("/onboarding", req.url));
     }
-
-    // If user is signed in and on auth routes (except callback), redirect to dashboard
-    if (isAuthRoute) {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-  }
-
-  // If user is signed in and on the landing page, redirect to dashboard
-  if (session && isPublicRoute) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
-  }
-
-  // If user is not signed in and trying to access protected route
-  if (!session && !isAuthRoute && !isPublicRoute) {
-    const redirectUrl = new URL("/auth", req.url);
-    redirectUrl.searchParams.set("next", req.nextUrl.pathname);
-    return NextResponse.redirect(redirectUrl);
   }
 
   return res;
