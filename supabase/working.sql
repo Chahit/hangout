@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 DO $$ 
 BEGIN
     -- Create temporary table for profiles backup
-    CREATE TEMP TABLE IF NOT EXISTS profiles_backup AS 
+    CREATE TEMP TABLE IF EXISTS profiles_backup AS 
     SELECT * FROM public.profiles;
     
     -- Drop all tables in correct order
@@ -1580,5 +1580,52 @@ GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO postgres, anon, authenticated, service_role;
+
+-- Create email_otps table for OTP-based authentication
+DROP TABLE IF EXISTS public.email_otps;
+CREATE TABLE public.email_otps (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  email text NOT NULL,
+  otp text NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  expires_at timestamp with time zone NOT NULL
+);
+
+-- Add indexes for email_otps
+CREATE INDEX IF NOT EXISTS email_otps_email_idx ON public.email_otps (email);
+CREATE INDEX IF NOT EXISTS email_otps_otp_idx ON public.email_otps (otp);
+CREATE INDEX IF NOT EXISTS email_otps_expires_at_idx ON public.email_otps (expires_at);
+
+-- Enable RLS for email_otps
+ALTER TABLE public.email_otps ENABLE ROW LEVEL SECURITY;
+
+-- Add RLS policies for email_otps
+CREATE POLICY "Enable insert for service role only" 
+  ON public.email_otps FOR INSERT 
+  TO service_role 
+  WITH CHECK (true);
+
+CREATE POLICY "Enable delete for service role only" 
+  ON public.email_otps FOR DELETE 
+  TO service_role 
+  USING (true);
+
+-- Create function to clean up expired OTPs
+CREATE OR REPLACE FUNCTION clean_expired_otps()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  DELETE FROM public.email_otps
+  WHERE expires_at < NOW();
+END;
+$$;
+
+-- Create a trigger to automatically clean up expired OTPs
+DROP TRIGGER IF EXISTS clean_expired_otps_trigger ON public.email_otps;
+CREATE TRIGGER clean_expired_otps_trigger
+  AFTER INSERT ON public.email_otps
+  EXECUTE FUNCTION clean_expired_otps();
 
 
