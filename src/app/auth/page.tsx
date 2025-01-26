@@ -50,11 +50,7 @@ function AuthContent() {
         return;
       }
 
-      const supabase = createClientComponentClient({
-        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-        supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      });
-
+      const supabase = createClientComponentClient();
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
