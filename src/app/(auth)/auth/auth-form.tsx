@@ -10,11 +10,11 @@ export default function AuthForm() {
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
 
-  // Handle error from callback
   useEffect(() => {
     const error = searchParams?.get('error');
+    const errorDescription = searchParams?.get('error_description');
     if (error) {
-      setError(decodeURIComponent(error));
+      setError(decodeURIComponent(errorDescription || error));
     }
   }, [searchParams]);
 
@@ -23,20 +23,22 @@ export default function AuthForm() {
       setLoading(true);
       setError(null);
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           queryParams: {
             access_type: 'offline',
-            prompt: 'select_account'
+            prompt: 'select_account consent'
           },
-          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-          scopes: 'email profile'
+          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
         }
       });
 
       if (error) throw error;
-      console.log('Redirecting to Google account selection...');
+      
+      if (data) {
+        console.log('Redirecting to Google sign in...');
+      }
     } catch (error) {
       console.error('Google Sign-In error:', error);
       setError(error instanceof Error ? error.message : 'Failed to sign in with Google');
