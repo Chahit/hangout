@@ -6,21 +6,33 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
   
+  // Always use the site URL from environment variable
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
+  
   if (code) {
     const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     try {
-      await supabase.auth.exchangeCodeForSession(code);
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+      
+      // Check if user has a profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .single();
+
+      // Redirect to onboarding if no profile, otherwise dashboard
+      const redirectTo = profile ? '/dashboard' : '/onboarding';
+      return NextResponse.redirect(new URL(redirectTo, siteUrl));
+      
     } catch (error) {
       console.error('Auth error:', error);
-      return NextResponse.redirect(new URL('/auth?error=auth_error', requestUrl.origin));
+      return NextResponse.redirect(new URL('/auth?error=auth_error', siteUrl));
     }
-    
-    // Successful auth - redirect to dashboard
-    return NextResponse.redirect(new URL('/dashboard', requestUrl.origin));
   }
 
   // No code - redirect to auth page
-  return NextResponse.redirect(new URL('/auth', requestUrl.origin));
+  return NextResponse.redirect(new URL('/auth', siteUrl));
 } 
