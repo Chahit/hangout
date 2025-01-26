@@ -21,11 +21,8 @@ export async function GET(request: Request) {
     }
 
     // Create a Supabase client with the cookies
-    const cookieStore = cookies();
-    console.log('Available cookies:', cookieStore.getAll().map(c => c.name));
-
     const supabase = createRouteHandlerClient({ 
-      cookies: () => cookieStore 
+      cookies
     });
 
     // Exchange the code for a session
@@ -60,12 +57,7 @@ export async function GET(request: Request) {
     const redirectUrl = new URL(profile ? '/dashboard' : '/onboarding', siteUrl);
     console.log('Redirecting to:', redirectUrl.toString());
     
-    const response = NextResponse.redirect(redirectUrl);
-
-    // Log all cookies being set
-    console.log('Cookies in response:', response.headers.get('set-cookie'));
-
-    return response;
+    return NextResponse.redirect(redirectUrl);
 
   } catch (error) {
     console.error('Callback error:', error);
