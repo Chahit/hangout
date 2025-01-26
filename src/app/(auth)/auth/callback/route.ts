@@ -48,12 +48,17 @@ export async function GET(request: Request) {
     // Redirect based on profile existence
     const redirectTo = profile ? '/dashboard' : '/onboarding';
     
-    // Create the redirect response with cookies
+    // Create the redirect response
     const response = NextResponse.redirect(new URL(redirectTo, siteUrl));
-    
-    // Copy cookies from the cookie store
-    cookieStore.getAll().forEach(cookie => {
-      response.cookies.set(cookie.name, cookie.value, cookie.options);
+
+    // Set the cookies directly on the response
+    const allCookies = cookieStore.getAll();
+    allCookies.forEach(cookie => {
+      response.cookies.set({
+        name: cookie.name,
+        value: cookie.value,
+        ...cookie
+      });
     });
 
     return response;
