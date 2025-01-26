@@ -107,7 +107,7 @@ export default function SupportPostPage() {
     } catch (error) {
       console.error('Error creating response:', error);
     }
-  }, [supabase, currentUser, newResponse, id, fetchPost]);
+  }, [supabase, currentUser, newResponse, fetchPost]);
 
   const handleMarkResolved = useCallback(async () => {
     try {

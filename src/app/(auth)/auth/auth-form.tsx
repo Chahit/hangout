@@ -2,16 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { AuthError } from '@supabase/supabase-js';
+import { useSearchParams } from 'next/navigation';
 
 export default function AuthForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
 
@@ -23,119 +18,75 @@ export default function AuthForm() {
     }
   }, [searchParams]);
 
-  const validateEmail = (email: string) => {
-    return email.toLowerCase().endsWith('@snu.edu.in');
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setLoading(true);
-
-    if (!validateEmail(email)) {
-      setError('Please use your SNU email (@snu.edu.in)');
-      setLoading(false);
-      return;
-    }
-
+  const handleGoogleSignIn = async () => {
     try {
-      // Always try sign in first
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      setLoading(true);
+      setError(null);
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          queryParams: {
+            hd: 'snu.edu.in', // Restrict to SNU domain
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+        }
       });
 
-      if (signInError) {
-        // If user doesn't exist, try to sign up
-        if (signInError.message.includes('Invalid login credentials')) {
-          const { error: signUpError } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-              data: {
-                email_domain: 'snu.edu.in'
-              }
-            },
-          });
-
-          if (signUpError) throw signUpError;
-          setSuccess('Please check your email for the verification link.');
-        } else {
-          throw signInError;
-        }
-      } else {
-        // Successful sign in
-        router.push('/dashboard');
-        router.refresh();
-      }
+      if (error) throw error;
     } catch (error) {
-      console.error('Auth error:', error);
-      setError(error instanceof AuthError ? error.message : 'An error occurred during authentication');
+      console.error('Google Sign-In error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to sign in with Google');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+    <div className="mt-8 space-y-6">
       {error && (
         <div className="bg-red-500/10 border border-red-500 text-red-500 rounded-lg p-4 text-sm">
           {error}
         </div>
       )}
-      
-      {success && (
-        <div className="bg-green-500/10 border border-green-500 text-green-500 rounded-lg p-4 text-sm">
-          {success}
-        </div>
-      )}
 
-      <div className="space-y-4">
-        <div>
-          <label htmlFor="email" className="sr-only">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            placeholder="your.name@snu.edu.in"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="password" className="sr-only">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            placeholder="Password (min 6 characters)"
-            minLength={6}
-          />
-        </div>
+      <div className="text-center space-y-2">
+        <h2 className="text-xl font-semibold text-white">Welcome to SNU Hangout</h2>
+        <p className="text-gray-400">Sign in with your SNU Google account</p>
       </div>
 
       <button
-        type="submit"
+        type="button"
+        onClick={handleGoogleSignIn}
         disabled={loading}
-        className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg text-white ${
-          loading
-            ? 'bg-purple-500/50 cursor-not-allowed'
-            : 'bg-purple-500 hover:bg-purple-600'
-        } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500`}
+        className="w-full flex items-center justify-center gap-3 bg-white text-gray-900 rounded-lg px-4 py-3 font-medium hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? 'Please wait...' : 'Sign in / Sign up'}
+        <svg className="w-5 h-5" viewBox="0 0 24 24">
+          <path
+            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+            fill="#4285F4"
+          />
+          <path
+            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+            fill="#34A853"
+          />
+          <path
+            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+            fill="#FBBC05"
+          />
+          <path
+            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+            fill="#EA4335"
+          />
+        </svg>
+        {loading ? 'Please wait...' : 'Sign in with Google'}
       </button>
-    </form>
+
+      <p className="text-center text-sm text-gray-400">
+        Only @snu.edu.in accounts are allowed
+      </p>
+    </div>
   );
 } 

@@ -132,7 +132,7 @@ export default function MatchesPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, router]);
 
   const createConnection = useCallback(async (toUserId: string) => {
     try {
