@@ -2,41 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { motion } from 'framer-motion';
-import { Sparkles, Mail } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-
-// Floating background shapes component
-const FloatingShapes = () => (
-  <div className="fixed inset-0 -z-10 overflow-hidden">
-    <motion.div
-      className="absolute w-72 h-72 bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-full blur-3xl"
-      animate={{
-        x: [0, 100, 0],
-        y: [0, 50, 0],
-      }}
-      transition={{
-        duration: 20,
-        repeat: Infinity,
-        ease: "linear"
-      }}
-      style={{ top: '10%', left: '20%' }}
-    />
-    <motion.div
-      className="absolute w-96 h-96 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-full blur-3xl"
-      animate={{
-        x: [0, -70, 0],
-        y: [0, 100, 0],
-      }}
-      transition={{
-        duration: 25,
-        repeat: Infinity,
-        ease: "linear"
-      }}
-      style={{ top: '40%', right: '10%' }}
-    />
-  </div>
-);
 
 export default function AuthPage() {
   const [email, setEmail] = useState('');
@@ -101,12 +67,14 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background">
-      <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
-        <div className="flex flex-col space-y-2 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
-          <p className="text-sm text-muted-foreground">
-            Enter your email to sign in
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="w-full max-w-md space-y-8 p-4">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-purple-600 text-transparent bg-clip-text">
+            SNU Hangout
+          </h1>
+          <p className="mt-3 text-muted-foreground">
+            Your campus, your community, your vibe
           </p>
         </div>
 
@@ -127,27 +95,28 @@ export default function AuthPage() {
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSignIn}>
-            <div className="grid gap-2">
-              <div className="grid gap-1">
-                <input
-                  type="email"
-                  placeholder="name.lastname@snu.edu.in"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-md border p-2"
-                />
-              </div>
-              <button
-                type="submit"
+          <form onSubmit={handleSignIn} className="space-y-4">
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium mb-2">
+                SNU Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                placeholder="name.lastname@snu.edu.in"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-md border p-2 bg-background"
                 disabled={loading}
-                className={`w-full rounded-md bg-primary p-2 text-white ${
-                  loading ? 'opacity-50' : ''
-                }`}
-              >
-                {loading ? 'Sending...' : 'Send Magic Link'}
-              </button>
+              />
             </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {loading ? 'Sending...' : 'Send Magic Link'}
+            </button>
           </form>
         )}
       </div>
