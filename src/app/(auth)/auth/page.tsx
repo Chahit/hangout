@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AuthError } from '@supabase/supabase-js';
 
 export default function AuthPage() {
@@ -12,7 +12,16 @@ export default function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
+
+  // Handle error from callback
+  useEffect(() => {
+    const error = searchParams?.get('error');
+    if (error) {
+      setError(decodeURIComponent(error));
+    }
+  }, [searchParams]);
 
   const validateEmail = (email: string) => {
     return email.toLowerCase().endsWith('@snu.edu.in');
@@ -31,36 +40,39 @@ export default function AuthPage() {
     }
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      // Always try sign in first
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
       });
 
-      if (signUpError) throw signUpError;
-
-      setSuccess('Please check your email for the verification link.');
-    } catch (error) {
-      if (error instanceof AuthError && error.message === 'User already registered') {
-        // Try to sign in if user exists
-        try {
-          const { error: signInError } = await supabase.auth.signInWithPassword({
+      if (signInError) {
+        // If user doesn't exist, try to sign up
+        if (signInError.message.includes('Invalid login credentials')) {
+          const { error: signUpError } = await supabase.auth.signUp({
             email,
             password,
+            options: {
+              emailRedirectTo: `${window.location.origin}/auth/callback`,
+              data: {
+                email_domain: 'snu.edu.in'
+              }
+            },
           });
 
-          if (signInError) throw signInError;
-          
-          router.push('/dashboard');
-          return;
-        } catch (signInError) {
-          setError(signInError instanceof AuthError ? signInError.message : 'Failed to sign in');
+          if (signUpError) throw signUpError;
+          setSuccess('Please check your email for the verification link.');
+        } else {
+          throw signInError;
         }
       } else {
-        setError(error instanceof AuthError ? error.message : 'An error occurred');
+        // Successful sign in
+        router.push('/dashboard');
+        router.refresh();
       }
+    } catch (error) {
+      console.error('Auth error:', error);
+      setError(error instanceof AuthError ? error.message : 'An error occurred during authentication');
     } finally {
       setLoading(false);
     }

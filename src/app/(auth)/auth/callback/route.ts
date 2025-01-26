@@ -8,21 +8,39 @@ export async function GET(request: Request) {
   try {
     const requestUrl = new URL(request.url);
     const code = requestUrl.searchParams.get('code');
+    const error = requestUrl.searchParams.get('error');
+    const error_description = requestUrl.searchParams.get('error_description');
+    const next = requestUrl.searchParams.get('next') || '/dashboard';
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
 
-    // Enhanced debug logging
-    console.log('Full request URL:', request.url);
-    console.log('Search params:', Object.fromEntries(requestUrl.searchParams));
-    console.log('Headers:', Object.fromEntries(request.headers));
+    // Log incoming request details for debugging
+    console.log('Auth Callback - Request Details:', {
+      url: request.url,
+      code: code ? 'present' : 'missing',
+      error,
+      error_description,
+      next,
+      origin: requestUrl.origin,
+      siteUrl
+    });
+
+    // Handle any error parameters first
+    if (error) {
+      console.error('Auth error from provider:', error, error_description);
+      return NextResponse.redirect(
+        new URL(`/auth?error=${encodeURIComponent(error_description || error)}`, siteUrl)
+      );
+    }
 
     if (!code) {
       console.error('No code provided in callback');
-      return NextResponse.redirect(new URL('/auth?error=no_code', siteUrl));
+      return NextResponse.redirect(new URL('/auth?error=missing_code', siteUrl));
     }
 
     // Create a Supabase client with the cookies
+    const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ 
-      cookies
+      cookies: () => cookieStore 
     });
 
     // Exchange the code for a session
@@ -30,18 +48,22 @@ export async function GET(request: Request) {
     const { data: { session }, error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
 
     if (sessionError) {
-      console.error('Session Error:', sessionError.message, sessionError);
-      return NextResponse.redirect(new URL(`/auth?error=${encodeURIComponent(sessionError.message)}`, siteUrl));
+      console.error('Session exchange error:', {
+        message: sessionError.message,
+        status: sessionError.status,
+        name: sessionError.name
+      });
+      return NextResponse.redirect(
+        new URL(`/auth?error=${encodeURIComponent(sessionError.message)}`, siteUrl)
+      );
     }
 
-    if (!session?.user) {
-      console.error('No session or user after exchange');
-      return NextResponse.redirect(new URL('/auth?error=no_session', siteUrl));
+    if (!session) {
+      console.error('No session returned after successful exchange');
+      return NextResponse.redirect(new URL('/auth?error=no_session_data', siteUrl));
     }
 
-    console.log('Session exchange successful, user ID:', session.user.id);
-
-    // Check if user has a profile
+    // Get user profile after successful authentication
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
@@ -49,19 +71,23 @@ export async function GET(request: Request) {
       .single();
 
     if (profileError && profileError.code !== 'PGRST116') {
-      console.error('Profile Error:', profileError.message);
-      return NextResponse.redirect(new URL('/auth?error=profile_error', siteUrl));
+      console.error('Profile fetch error:', profileError);
+      return NextResponse.redirect(
+        new URL('/auth?error=profile_fetch_failed', siteUrl)
+      );
     }
 
-    // Create response with redirect
-    const redirectUrl = new URL(profile ? '/dashboard' : '/onboarding', siteUrl);
-    console.log('Redirecting to:', redirectUrl.toString());
+    // Determine redirect based on profile existence and next parameter
+    const redirectUrl = profile ? next : '/onboarding';
+    console.log('Authentication successful, redirecting to:', redirectUrl);
     
-    return NextResponse.redirect(redirectUrl);
+    return NextResponse.redirect(new URL(redirectUrl, siteUrl));
 
   } catch (error) {
-    console.error('Callback error:', error);
+    console.error('Unhandled callback error:', error);
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-    return NextResponse.redirect(new URL('/auth?error=callback_error', siteUrl));
+    return NextResponse.redirect(
+      new URL('/auth?error=unhandled_callback_error', siteUrl)
+    );
   }
 } 
