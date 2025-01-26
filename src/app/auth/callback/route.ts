@@ -10,19 +10,18 @@ export async function GET(request: Request) {
   // Debug logging
   console.log('Auth callback received:', requestUrl.toString());
   console.log('Code present:', !!code);
-  
-  const cookieStore = cookies();
-  const cookieList = await cookieStore.getAll();
-  console.log('Cookies present:', cookieList.map(c => c.name).join(', '));
+
+  if (!code) {
+    console.error('No code provided in callback');
+    return NextResponse.redirect(new URL('/auth?error=no_code', siteUrl));
+  }
 
   try {
-    if (!code) {
-      console.error('No code provided in callback');
-      return NextResponse.redirect(new URL('/auth?error=no_code', siteUrl));
-    }
-
+    // Create Supabase client
+    const cookieStore = cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    
     // Exchange the code for a session
-    const supabase = createRouteHandlerClient({ cookies });
     const { data: { session }, error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
 
     if (sessionError) {
