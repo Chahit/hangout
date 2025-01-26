@@ -18,7 +18,22 @@ function AuthContent() {
   useEffect(() => {
     const errorParam = searchParams?.get('error');
     if (errorParam) {
-      setError('Authentication failed. Please try again.');
+      switch(errorParam) {
+        case 'no_code':
+          setError('Authentication code missing. Please try again.');
+          break;
+        case 'no_session':
+          setError('Session creation failed. Please try again.');
+          break;
+        case 'profile_error':
+          setError('Error accessing user profile. Please try again.');
+          break;
+        case 'callback_error':
+          setError('Authentication process failed. Please try again.');
+          break;
+        default:
+          setError('Authentication failed. Please try again.');
+      }
     }
   }, [searchParams]);
 
@@ -31,7 +46,6 @@ function AuthContent() {
     try {
       if (!email.endsWith('@snu.edu.in')) {
         setError('Please use your SNU email address.');
-        setLoading(false);
         return;
       }
 
@@ -39,17 +53,16 @@ function AuthContent() {
         email,
         options: {
           emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-          shouldCreateUser: true
+          shouldCreateUser: true,
         }
       });
       
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
       
       setSuccess('Check your email for the login link!');
       setEmail('');
     } catch (error) {
+      console.error('Sign in error:', error);
       setError(error instanceof Error ? error.message : 'Failed to send login link');
     } finally {
       setLoading(false);
