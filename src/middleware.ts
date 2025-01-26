@@ -6,14 +6,18 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient({ req, res });
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  // Refresh session if expired - required for Server Components
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
   // Auth routes that should be accessible without session
   const isAuthRoute = req.nextUrl.pathname.startsWith("/auth");
   const isPublicRoute = req.nextUrl.pathname === "/";
   const isOnboardingRoute = req.nextUrl.pathname === "/onboarding";
+
+  // Allow callback route to proceed without redirects
+  if (req.nextUrl.pathname === "/auth/callback") {
+    return res;
+  }
 
   if (session?.user) {
     // Check if profile exists and is complete
@@ -28,6 +32,11 @@ export async function middleware(req: NextRequest) {
     if ((!profile || !profile.batch || !profile.branch || !profile.username) && !isOnboardingRoute) {
       return NextResponse.redirect(new URL("/onboarding", req.url));
     }
+
+    // If user is signed in and on auth routes (except callback), redirect to dashboard
+    if (isAuthRoute) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
   }
 
   // If user is signed in and on the landing page, redirect to dashboard
@@ -37,12 +46,9 @@ export async function middleware(req: NextRequest) {
 
   // If user is not signed in and trying to access protected route
   if (!session && !isAuthRoute && !isPublicRoute) {
-    return NextResponse.redirect(new URL("/auth", req.url));
-  }
-
-  // If user is signed in and trying to access auth routes
-  if (session && isAuthRoute) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    const redirectUrl = new URL("/auth", req.url);
+    redirectUrl.searchParams.set("next", req.nextUrl.pathname);
+    return NextResponse.redirect(redirectUrl);
   }
 
   return res;
