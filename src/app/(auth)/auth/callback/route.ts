@@ -17,12 +17,18 @@ export async function GET(request: Request) {
       .select('*')
       .single();
 
+    // Get the site URL from environment variable
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
+
     // If no profile exists, redirect to onboarding
     if (!profile) {
-      return NextResponse.redirect(new URL('/onboarding', requestUrl.origin));
+      return NextResponse.redirect(new URL('/onboarding', siteUrl));
     }
+
+    // If profile exists, redirect to dashboard
+    return NextResponse.redirect(new URL('/dashboard', siteUrl));
   }
 
-  // If profile exists, redirect to dashboard
-  return NextResponse.redirect(new URL('/dashboard', requestUrl.origin));
+  // If no code, redirect to auth page
+  return NextResponse.redirect(new URL('/auth', requestUrl.origin));
 } 
