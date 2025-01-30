@@ -44,14 +44,23 @@ const nextConfig = {
       }
     ];
   },
-  // Ensure we're using the correct hostname in production
-  assetPrefix: process.env.NODE_ENV === 'production' ? 'https://hangout-production.up.railway.app' : '',
-  // Allow images from Supabase storage and other sources
+  // Production settings
+  output: 'standalone',
+  productionBrowserSourceMaps: true,
+  compress: true,
+  // Image optimization
   images: {
     domains: [
       'kuhrmktxazqcfzawzwhw.supabase.co',
-      'lh3.googleusercontent.com', // For Google profile pictures
+      'lh3.googleusercontent.com',
     ],
+    minimumCacheTTL: 60,
+  },
+  // Increase timeout for builds
+  staticPageGenerationTimeout: 120,
+  experimental: {
+    // Enable if you're using app directory
+    serverActions: true,
   },
   // Disable x-powered-by header
   poweredByHeader: false,
