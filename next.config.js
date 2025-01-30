@@ -53,6 +53,8 @@ const nextConfig = {
     domains: [
       'kuhrmktxazqcfzawzwhw.supabase.co',
       'lh3.googleusercontent.com',
+      'uploadthing.com',
+      'utfs.io'
     ],
     minimumCacheTTL: 60,
   },
