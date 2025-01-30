@@ -7,6 +7,10 @@ const CACHE_TTL = 5 * 60 * 1000;
 const sessionCache = new Map();
 const profileCache = new Map();
 
+interface CustomError extends Error {
+  message: string;
+}
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   
@@ -90,9 +94,9 @@ export async function middleware(req: NextRequest) {
             timestamp: now
           });
         }
-      } catch (error) {
+      } catch (error: unknown) {
         // If rate limited, use cached profile if available
-        if (error.message?.includes('rate limit') && profileCache.has(profileCacheKey)) {
+        if (error instanceof Error && error.message.includes('rate limit') && profileCache.has(profileCacheKey)) {
           const cached = profileCache.get(profileCacheKey);
           profile = cached.profile;
         } else {
@@ -107,11 +111,11 @@ export async function middleware(req: NextRequest) {
     }
 
     return res;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Middleware error:', error);
     
     // For rate limit errors, return the original response instead of redirecting
-    if (error.message?.includes('rate limit')) {
+    if (error instanceof Error && error.message.includes('rate limit')) {
       console.warn('Rate limit reached, proceeding with request');
       return res;
     }
