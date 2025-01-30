@@ -6,7 +6,7 @@ import {
   MessageSquare, Users, Heart,
   Bell
 } from "lucide-react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import { motion } from "framer-motion";
 import Link from "next/link";
 
@@ -65,7 +65,10 @@ interface DashboardStats {
 }
 
 export default function DashboardPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const [stats, setStats] = useState<DashboardStats>({
     communities: 0,
     unreadMessages: 0,

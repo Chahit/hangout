@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { useParams } from 'next/navigation';
 import { Send, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
@@ -31,7 +31,10 @@ interface MatchInfo {
 export default function ChatPage() {
   const params = useParams();
   const matchId = params.matchId as string;
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);

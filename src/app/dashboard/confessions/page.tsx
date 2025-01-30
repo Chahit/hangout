@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { Heart, Send, X, Loader2, Share, MessageCircle, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Database } from '@/lib/database.types';
@@ -97,7 +97,10 @@ export default function ConfessionsPage() {
   const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [shareSuccess, setShareSuccess] = useState<string | null>(null);
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const fetchUser = useCallback(async () => {
     try {

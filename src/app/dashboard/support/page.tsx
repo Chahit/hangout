@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { 
   MessageCircle, 
   Plus, 
@@ -79,7 +79,10 @@ const buttonVariants = {
 };
 
 export default function SupportPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<SupportPost[]>([]);
   const [loading, setLoading] = useState(true);

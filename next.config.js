@@ -58,10 +58,6 @@ const nextConfig = {
   },
   // Increase timeout for builds
   staticPageGenerationTimeout: 120,
-  experimental: {
-    // Enable if you're using app directory
-    serverActions: true,
-  },
   // Disable x-powered-by header
   poweredByHeader: false,
 }

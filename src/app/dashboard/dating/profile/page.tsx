@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { motion } from 'framer-motion';
 import { DATING_QUESTIONS, type QuestionOption } from '../questions';
 import { useRouter } from 'next/navigation';
@@ -10,7 +10,10 @@ import { Loader2 } from 'lucide-react';
 
 export default function ProfilePage() {
   const router = useRouter();
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const [currentQuestion, setCurrentQuestion] = useState<number>(0);
   const [answers, setAnswers] = useState<Record<number, QuestionOption>>({});
   const [loading, setLoading] = useState(true);

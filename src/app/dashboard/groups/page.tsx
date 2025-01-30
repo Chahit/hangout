@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { Dumbbell, Code, Book, Music, Gamepad, Camera, Coffee, MessageSquare, Trash2, Search, Clock, Users, Sparkles } from 'lucide-react';
 import { Database } from '../../../lib/database.types';
 import { motion } from 'framer-motion';
@@ -92,7 +92,10 @@ interface GroupStats {
 }
 
 export default function GroupsPage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);

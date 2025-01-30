@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Database } from '@/lib/database.types';
@@ -21,7 +21,10 @@ interface DatingProfile {
 
 export default function DatingPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const [profile, setProfile] = useState<DatingProfile | null>(null);
   const [loading, setLoading] = useState(true);
 

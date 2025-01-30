@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { Tag, User, Check } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
@@ -34,7 +34,10 @@ type SupportPost = {
 };
 
 export default function SupportPostPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const { id } = useParams();
   const [post, setPost] = useState<SupportPost | null>(null);
   const [loading, setLoading] = useState(true);
