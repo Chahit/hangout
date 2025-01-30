@@ -7,10 +7,6 @@ const CACHE_TTL = 5 * 60 * 1000;
 const sessionCache = new Map();
 const profileCache = new Map();
 
-interface CustomError extends Error {
-  message: string;
-}
-
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   
