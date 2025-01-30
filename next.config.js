@@ -62,6 +62,17 @@ const nextConfig = {
   staticPageGenerationTimeout: 120,
   // Disable x-powered-by header
   poweredByHeader: false,
+  // Copy files to standalone directory
+  experimental: {
+    outputFileTracingRoot: process.cwd(),
+    outputFileTracingExcludes: {
+      '*': [
+        'node_modules/@swc/core-linux-x64-gnu',
+        'node_modules/@swc/core-linux-x64-musl',
+        'node_modules/@esbuild/linux-x64',
+      ],
+    },
+  },
 }
 
 module.exports = nextConfig 
