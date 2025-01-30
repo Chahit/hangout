@@ -23,14 +23,20 @@ export default function AuthForm() {
       setLoading(true);
       setError(null);
 
+      // Get the next URL from search params or default to dashboard
+      const next = searchParams?.get('next') || '/dashboard';
+      const origin = typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_SITE_URL;
+      const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           queryParams: {
             access_type: 'offline',
-            prompt: 'select_account consent'
+            prompt: 'select_account consent',
+            hd: 'snu.edu.in' // Restrict to SNU domain
           },
-          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+          redirectTo
         }
       });
 
