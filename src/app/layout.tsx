@@ -1,8 +1,5 @@
-import { Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
-
-const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
   title: 'SNU Hangout',
@@ -16,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className="dark">
-      <body className={`${inter.className} bg-gray-950 text-gray-100`}>
+      <body className="min-h-screen bg-background font-cabinet-grotesk antialiased">
         <Providers>
           {children}
         </Providers>
