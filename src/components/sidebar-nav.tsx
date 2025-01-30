@@ -44,7 +44,7 @@ export function SidebarNav() {
       {/* Mobile Menu Button */}
       <button
         onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-50 p-2 rounded-lg bg-gray-800 text-white hover:bg-gray-700 transition-colors md:hidden"
+        className="fixed top-4 left-4 z-50 p-2 rounded-lg bg-primary text-primary-foreground md:hidden"
       >
         {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
       </button>
@@ -57,7 +57,7 @@ export function SidebarNav() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsOpen(false)}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+            className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
           />
         )}
       </AnimatePresence>
@@ -70,18 +70,18 @@ export function SidebarNav() {
           opacity: isOpen ? 1 : 0,
         }}
         transition={{ type: "spring", bounce: 0.25 }}
-        className={`fixed top-0 left-0 z-50 w-64 bg-gray-900 border-r border-gray-800 min-h-screen p-4 md:relative md:translate-x-0 md:opacity-100 md:bg-transparent`}
+        className={`fixed top-0 left-0 z-50 w-64 bg-card border-r border-secondary min-h-screen p-4 md:relative md:translate-x-0 md:opacity-100`}
       >
         <div className="space-y-4">
           <div className="px-3 py-2 flex items-center justify-between">
-            <h2 className="text-xl font-bold tracking-tight bg-gradient-to-r from-purple-400 to-pink-500 text-transparent bg-clip-text">
-              SNU Hangout
+            <h2 className="text-lg font-semibold tracking-tight">
+              CollegeConnect
             </h2>
             <div className="flex items-center gap-2">
               <NotificationsDropdown />
               <button
                 onClick={handleLogout}
-                className="p-2 rounded-full hover:bg-gray-800/50 transition-colors text-red-400 hover:text-red-300"
+                className="p-2 rounded-full hover:bg-secondary transition-colors text-destructive"
                 title="Logout"
               >
                 <LogOut className="h-5 w-5" />
@@ -97,15 +97,13 @@ export function SidebarNav() {
                   key={item.href}
                   href={item.href}
                   onClick={() => setIsOpen(false)}
-                  className={`flex items-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
+                  className={`flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
                     isActive
-                      ? 'bg-purple-500/10 text-purple-400'
-                      : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800/50'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                   }`}
                 >
-                  <Icon className={`mr-3 h-5 w-5 transition-colors ${
-                    isActive ? 'text-purple-400' : 'text-gray-400 group-hover:text-gray-100'
-                  }`} />
+                  <Icon className="mr-3 h-5 w-5" />
                   {item.label}
                 </Link>
               );

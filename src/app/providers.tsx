@@ -2,7 +2,6 @@
 
 import { PropsWithChildren, useEffect } from 'react';
 import { configureAbly } from "@ably-labs/react-hooks";
-import { ThemeProvider } from 'next-themes';
 
 export function Providers({ children }: PropsWithChildren) {
   useEffect(() => {
@@ -12,9 +11,5 @@ export function Providers({ children }: PropsWithChildren) {
     });
   }, []);
 
-  return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} forcedTheme="dark">
-      {children}
-    </ThemeProvider>
-  );
+  return children;
 } 

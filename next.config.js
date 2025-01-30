@@ -45,6 +45,7 @@ const nextConfig = {
     ];
   },
   // Production settings
+  output: 'standalone',
   productionBrowserSourceMaps: true,
   compress: true,
   // Image optimization
@@ -52,9 +53,6 @@ const nextConfig = {
     domains: [
       'kuhrmktxazqcfzawzwhw.supabase.co',
       'lh3.googleusercontent.com',
-      'uploadthing.com',
-      'utfs.io',
-      'hangout-production.up.railway.app'
     ],
     minimumCacheTTL: 60,
   },
@@ -62,8 +60,6 @@ const nextConfig = {
   staticPageGenerationTimeout: 120,
   // Disable x-powered-by header
   poweredByHeader: false,
-  // Production URL
-  assetPrefix: process.env.NODE_ENV === 'production' ? 'https://hangout-production.up.railway.app' : '',
 }
 
 module.exports = nextConfig 
