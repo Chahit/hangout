@@ -45,7 +45,6 @@ const nextConfig = {
     ];
   },
   // Production settings
-  output: 'standalone',
   productionBrowserSourceMaps: true,
   compress: true,
   // Image optimization
@@ -54,7 +53,8 @@ const nextConfig = {
       'kuhrmktxazqcfzawzwhw.supabase.co',
       'lh3.googleusercontent.com',
       'uploadthing.com',
-      'utfs.io'
+      'utfs.io',
+      'hangout-production.up.railway.app'
     ],
     minimumCacheTTL: 60,
   },
@@ -62,17 +62,8 @@ const nextConfig = {
   staticPageGenerationTimeout: 120,
   // Disable x-powered-by header
   poweredByHeader: false,
-  // Copy files to standalone directory
-  experimental: {
-    outputFileTracingRoot: process.cwd(),
-    outputFileTracingExcludes: {
-      '*': [
-        'node_modules/@swc/core-linux-x64-gnu',
-        'node_modules/@swc/core-linux-x64-musl',
-        'node_modules/@esbuild/linux-x64',
-      ],
-    },
-  },
+  // Production URL
+  assetPrefix: process.env.NODE_ENV === 'production' ? 'https://hangout-production.up.railway.app' : '',
 }
 
 module.exports = nextConfig 
