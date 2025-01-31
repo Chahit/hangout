@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { Dumbbell, Code, Book, Music, Gamepad, Camera, Coffee, MessageSquare, Trash2, Search, Clock, Users, Sparkles } from 'lucide-react';
-import { Database } from '../../../lib/database.types';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import Modal from '@/components/shared/Modal';

@@ -3,7 +3,6 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
-import { Database } from '@/lib/database.types';
 import { useRouter } from 'next/navigation';
 
 interface DatingProfile {

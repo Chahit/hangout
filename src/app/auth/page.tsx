@@ -27,39 +27,42 @@ function AuthContent() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
-      <div className="w-full max-w-md space-y-8">
+    <main className="relative flex min-h-screen flex-col items-center justify-center p-4 bg-[#020817]">
+      {/* Purple gradient effect */}
+      <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/20 via-transparent to-transparent" />
+      
+      <div className="relative w-full max-w-md space-y-12">
         <div className="text-center space-y-6">
-          <h1 className="text-4xl font-bold text-foreground font-clash-display">
+          <h1 className="text-5xl font-bold text-white font-clash-display">
             Welcome to SNU Hangout
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-lg text-gray-400">
             Sign in with your SNU email
           </p>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-8">
           <button
             onClick={handleSignIn}
-            className="w-full flex items-center justify-center gap-3 bg-card hover:bg-card/80 text-card-foreground px-4 py-3 rounded-lg border border-border transition-colors"
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-gray-900 px-6 py-4 rounded-xl border-2 border-purple-500/20 transition-all duration-200 shadow-lg hover:shadow-purple-500/25 font-medium text-lg"
           >
             <Image
               src="/google.svg"
               alt="Google"
-              width={20}
-              height={20}
-              className="w-5 h-5"
+              width={24}
+              height={24}
+              className="w-6 h-6"
             />
             Sign in with Google
           </button>
 
           {error && (
-            <p className="text-sm text-destructive text-center">
+            <p className="text-sm text-red-500 text-center font-medium">
               {decodeURIComponent(error)}
             </p>
           )}
 
-          <p className="text-sm text-muted-foreground text-center">
+          <p className="text-sm text-gray-500 text-center">
             Only @snu.edu.in accounts are allowed
           </p>
         </div>

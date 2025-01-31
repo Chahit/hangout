@@ -6,7 +6,7 @@ import { Plus, X, ArrowRight, Calendar, Clock, MapPin, Users, Loader2 } from 'lu
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import Modal from '@/components/shared/Modal';
-import type { Database } from '@/lib/database.types';
+
 
 interface EventParticipant {
   user_id: string;

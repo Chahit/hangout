@@ -5,7 +5,6 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useParams } from 'next/navigation';
 import { Send, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import type { Database } from '@/lib/database.types';
 
 interface Message {
   id: string;

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { Check, X, Loader2, Heart } from 'lucide-react';
-import type { Database } from '@/lib/database.types';
+
 
 interface MatchRequest {
   id: string;

@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { Heart, Send, X, Loader2, Share, MessageCircle, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
-import type { Database } from '@/lib/database.types';
 import { format } from 'date-fns';
 import Modal from '@/components/shared/Modal';
 

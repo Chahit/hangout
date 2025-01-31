@@ -5,7 +5,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { calculateEnhancedCompatibilityScore, QUESTION_CATEGORIES } from '../questions';
 import { Heart, UserPlus, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import type { Database } from '@/lib/database.types';
+
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 

@@ -5,7 +5,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { motion } from 'framer-motion';
 import { DATING_QUESTIONS, type QuestionOption } from '../questions';
 import { useRouter } from 'next/navigation';
-import type { Database } from '@/lib/database.types';
+
 import { Loader2 } from 'lucide-react';
 
 export default function ProfilePage() {
